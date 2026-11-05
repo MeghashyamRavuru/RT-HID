@@ -144,7 +144,30 @@ class GroundTruthLabeler:
     def from_json(cls, path: Path) -> "GroundTruthLabeler":
         with path.open("r", encoding="utf-8") as file:
             payload = json.load(file)
-        experiments = [ExperimentSpec(**item) for item in payload.get("experiments", payload)]
+        if isinstance(payload, dict):
+            items = payload.get("experiments")
+            if items is None:
+                items = [payload]
+        elif isinstance(payload, list):
+            items = payload
+        else:
+            raise ValueError("experiment metadata must be an object or array")
+
+        experiments: list[ExperimentSpec] = []
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError("each experiment must be an object")
+            normalized = dict(item)
+            for alias, canonical in (
+                ("start_time", "start_timestamp"),
+                ("end_time", "end_timestamp"),
+            ):
+                if canonical not in normalized and alias in normalized:
+                    normalized[canonical] = normalized.pop(alias)
+            try:
+                experiments.append(ExperimentSpec(**normalized))
+            except TypeError as error:
+                raise ValueError(f"invalid experiment metadata fields: {error}") from error
         return cls(experiments)
 
 

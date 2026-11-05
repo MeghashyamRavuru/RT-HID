@@ -70,6 +70,25 @@ class DatasetCollectorTests(unittest.TestCase):
 
         self.assertEqual(decision.label, "unknown")
 
+    def test_experiment_json_accepts_start_time_and_end_time_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "experiment.json"
+            path.write_text(json.dumps({
+                "experiments": [{
+                    "experiment_id": "normal-ftp-02",
+                    "label": "normal",
+                    "start_time": 9.0,
+                    "end_time": 13.0,
+                    "target_ip": "10.0.0.2",
+                }]
+            }))
+
+            labeler = GroundTruthLabeler.from_json(path)
+            decision = labeler.label(flow_record())
+
+            self.assertEqual(decision.label, "normal")
+            self.assertEqual(decision.experiment_id, "normal-ftp-02")
+
     def test_incremental_write_flush_and_sidecar_stats(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             collector = DatasetCollector(Path(directory), "session-2", "sensor-b")
