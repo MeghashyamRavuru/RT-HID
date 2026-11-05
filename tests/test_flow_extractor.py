@@ -93,6 +93,66 @@ class BidirectionalFlowExtractorTests(unittest.TestCase):
         self.assertEqual(extractor.active_flow_count, 1)
         self.assertEqual(extractor.flush()[0].features["packet_count"], 1)
 
+    def test_normal_tcp_teardown_keeps_final_ack_in_original_flow(self) -> None:
+        extractor = BidirectionalFlowExtractor()
+        packets = [
+            event(1.0, tcp_flags=0x02),
+            event(1.1, src_ip="10.0.0.2", src_port=443, dst_ip="10.0.0.1", dst_port=40000, tcp_flags=0x12),
+            event(1.2, tcp_flags=0x10),
+            event(2.0, tcp_flags=0x10),
+            event(2.1, src_ip="10.0.0.2", src_port=443, dst_ip="10.0.0.1", dst_port=40000, tcp_flags=0x10),
+            event(3.0, tcp_flags=0x11),
+            event(3.1, src_ip="10.0.0.2", src_port=443, dst_ip="10.0.0.1", dst_port=40000, tcp_flags=0x10),
+            event(3.2, src_ip="10.0.0.2", src_port=443, dst_ip="10.0.0.1", dst_port=40000, tcp_flags=0x11),
+        ]
+        for packet in packets:
+            self.assertEqual(extractor.ingest(packet), [])
+
+        final_records = extractor.ingest(event(3.3, tcp_flags=0x10))
+
+        self.assertEqual(len(final_records), 1)
+        record = final_records[0]
+        self.assertEqual(record.reason, "tcp_finished")
+        self.assertEqual(record.features["packet_count"], 9)
+        self.assertEqual(record.features["forward_packet_count"], 5)
+        self.assertEqual(record.features["backward_packet_count"], 4)
+        self.assertEqual(record.features["fin_count"], 2)
+        self.assertEqual(extractor.active_flow_count, 0)
+
+    def test_first_fin_waits_for_opposite_ack_and_fin(self) -> None:
+        extractor = BidirectionalFlowExtractor()
+        extractor.ingest(event(1.0, tcp_flags=0x11))
+
+        self.assertEqual(extractor.active_flow_count, 1)
+        self.assertEqual(extractor.ingest(event(1.1, src_ip="10.0.0.2", src_port=443, dst_ip="10.0.0.1", dst_port=40000, tcp_flags=0x10)), [])
+        self.assertEqual(extractor.active_flow_count, 1)
+        self.assertEqual(extractor.ingest(event(1.2, src_ip="10.0.0.2", src_port=443, dst_ip="10.0.0.1", dst_port=40000, tcp_flags=0x11)), [])
+        self.assertEqual(extractor.active_flow_count, 1)
+
+    def test_two_fin_packets_from_same_direction_do_not_finish_flow(self) -> None:
+        extractor = BidirectionalFlowExtractor()
+        extractor.ingest(event(1.0, tcp_flags=0x11))
+        extractor.ingest(event(1.1, tcp_flags=0x11))
+
+        self.assertEqual(extractor.active_flow_count, 1)
+        record = extractor.flush()[0]
+        self.assertEqual(record.reason, "flush")
+        self.assertEqual(record.features["packet_count"], 2)
+        self.assertEqual(record.features["forward_packet_count"], 2)
+        self.assertEqual(record.features["backward_packet_count"], 0)
+        self.assertEqual(record.features["fin_count"], 2)
+
+    def test_rst_still_closes_flow_immediately(self) -> None:
+        extractor = BidirectionalFlowExtractor()
+        extractor.ingest(event(1.0, tcp_flags=0x10))
+
+        records = extractor.ingest(event(1.1, tcp_flags=0x04))
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].reason, "tcp_reset")
+        self.assertEqual(records[0].features["packet_count"], 2)
+        self.assertEqual(extractor.active_flow_count, 0)
+
     def test_out_of_order_timestamps_do_not_create_negative_duration(self) -> None:
         extractor = BidirectionalFlowExtractor()
         extractor.ingest(event(10.0))

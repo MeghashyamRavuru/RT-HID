@@ -20,6 +20,13 @@ LIVE_FLOW_FEATURE_COLUMNS definitions:
         gaps from out-of-order events are ignored.
     syn_count/fin_count/rst_count/ack_count: TCP flag counts; zero for UDP.
 
+TCP teardown tracking is directional but approximate: this packet-event
+contract contains flags only, not TCP sequence or acknowledgment numbers. A
+flow is considered finished after a FIN, an ACK from the opposite direction,
+an opposite-direction FIN, and a final ACK from the first FIN direction. Exact
+ACK-to-FIN correlation requires adding sequence and acknowledgment numbers to
+PacketEvent in a future schema change.
+
 FlowRecord.key.protocol is metadata identifying TCP or UDP; it is deliberately
 not included in LIVE_FLOW_FEATURE_COLUMNS because the live numeric feature
 schema must not silently encode categorical protocol values.
@@ -152,6 +159,12 @@ class _FlowState:
     fin_count: int = 0
     rst_count: int = 0
     ack_count: int = 0
+    forward_fin_count: int = 0
+    backward_fin_count: int = 0
+    first_fin_forward: bool | None = None
+    first_fin_acknowledged: bool = False
+    opposite_fin_seen: bool = False
+    final_fin_acknowledged: bool = False
 
     def update(self, event: PacketEvent) -> None:
         forward = self.key.matches_forward(event)
@@ -173,6 +186,31 @@ class _FlowState:
             self.fin_count += int(bool(event.tcp_flags & TCP_FIN))
             self.rst_count += int(bool(event.tcp_flags & TCP_RST))
             self.ack_count += int(bool(event.tcp_flags & TCP_ACK))
+            fin_seen = bool(event.tcp_flags & TCP_FIN)
+            ack_seen = bool(event.tcp_flags & TCP_ACK)
+            if fin_seen:
+                if forward:
+                    self.forward_fin_count += 1
+                else:
+                    self.backward_fin_count += 1
+                if self.first_fin_forward is None:
+                    self.first_fin_forward = forward
+                elif forward != self.first_fin_forward:
+                    self.opposite_fin_seen = True
+            if ack_seen and self.first_fin_forward is not None:
+                if forward != self.first_fin_forward:
+                    self.first_fin_acknowledged = True
+                elif self.opposite_fin_seen:
+                    self.final_fin_acknowledged = True
+
+    @property
+    def teardown_complete(self) -> bool:
+        return (
+            self.first_fin_forward is not None
+            and self.first_fin_acknowledged
+            and self.opposite_fin_seen
+            and self.final_fin_acknowledged
+        )
 
     def features(self) -> dict[str, float | int]:
         duration = max(self.last_seen - self.first_seen, 0.0)
@@ -254,7 +292,7 @@ class BidirectionalFlowExtractor:
         self._flows.move_to_end(key)
         if packet.protocol == "TCP" and (packet.tcp_flags & TCP_RST):
             completed.append(self._close(key, "tcp_reset"))
-        elif packet.protocol == "TCP" and state.fin_count >= 2:
+        elif packet.protocol == "TCP" and state.teardown_complete:
             completed.append(self._close(key, "tcp_finished"))
         completed.extend(self._enforce_capacity())
         return completed

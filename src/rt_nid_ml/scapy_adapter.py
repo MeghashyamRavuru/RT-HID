@@ -130,7 +130,7 @@ class ScapyCapture:
             sniff_fn(
                 iface=self.interface,
                 filter=self.bpf_filter,
-                prn=self.process_packet,
+                prn=lambda packet: self.process_packet(packet) and None,
                 store=False,
                 stop_filter=stop_filter,
             )
@@ -153,7 +153,7 @@ class ScapyCapture:
             self._sniffer = AsyncSniffer(
                 iface=self.interface,
                 filter=self.bpf_filter,
-                prn=self.process_packet,
+                prn=lambda packet: self.process_packet(packet) and None,
                 store=False,
             )
             self._sniffer.start()
