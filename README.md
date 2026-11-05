@@ -46,10 +46,17 @@ The Windows dependency `pywin32` is installed automatically on Windows. Reading 
 Start the monitor and local dashboard together:
 
 ```bash
+python -m rt_nid_ml.host.cli set-password
 python -m rt_nid_ml.host.cli dashboard
 ```
 
-Open `http://127.0.0.1:5000` on that same computer. The dashboard shows incident totals and collector health. Browse all incidents with pagination, search and filter by state, then open one to inspect its affected files, related alerts, detection rationale, source events, and complete stored evidence. Acknowledge or resolve an incident from its detail view. It is bound to loopback by default. To run without the web UI:
+The first command prompts for a local admin password of at least 12 characters. Run it again to rotate the password; that signs out existing browser sessions. The dashboard will refuse to start until a password is set.
+
+Open `http://127.0.0.1:5000` on that same computer and sign in. The dashboard and all HTTP API endpoints require login. Sessions expire after eight hours, write actions require a CSRF token, and repeated failed logins are temporarily blocked. The dashboard only binds to loopback; use a local browser. The host's SQLite database contains the password hash and session signing secret, so protect the database file with operating-system permissions.
+
+HTTP API clients must keep the login session cookie and send the `csrf_token` from `GET /api/session` as the `X-CSRF-Token` header on POST requests. The password setup command uses the same database as the dashboard; pass the same `--config` option to both commands when using a custom configuration.
+
+The dashboard shows incident totals, seven-day activity, alert severity, and collector health. Browse all incidents with pagination, search and filter by state, then open one to inspect affected files, related alerts, detection rationale, source events, and complete stored evidence. Add investigation notes, export an incident as JSON, mark an alert as a false positive, or acknowledge and resolve an incident from the detail view. To run without the web UI:
 
 ```bash
 python -m rt_nid_ml.host.cli monitor
@@ -57,7 +64,7 @@ python -m rt_nid_ml.host.cli monitor
 
 Other commands are `status`, `alerts`, and `incidents`. Pass `--config config/host_ids.json` before the command to use the sample Linux configuration. Without a config file, the agent uses the machine hostname as its host ID and chooses platform defaults. Its database is `data/host_ids.sqlite3`; this runtime data is ignored by Git.
 
-Example Linux service files are in `packaging/`. The supplied systemd unit expects a checkout at `/opt/rt-nid-ml` and config at `/etc/rt-nid-ml/host_ids.json`; edit those paths for another location. The service runs the monitor and dashboard locally.
+Example Linux service files are in `packaging/`. The supplied systemd unit expects a checkout at `/opt/rt-nid-ml` and config at `/etc/rt-nid-ml/host_ids.json`; edit those paths for another location. Set the password with that same config and database before starting the service. The service runs the monitor and dashboard locally.
 
 ## Limits
 

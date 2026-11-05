@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
+import secrets
 import sqlite3
 import threading
+import uuid
 from pathlib import Path
 from typing import Any
+
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from .models import CollectorStatus, Detection, HostEvent, utc_now
 
@@ -15,6 +20,8 @@ class HostDatabase:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self.connection = sqlite3.connect(self.path, check_same_thread=False)
+        if os.name == "posix":
+            os.chmod(self.path, 0o600)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute("PRAGMA busy_timeout=5000")
@@ -59,6 +66,14 @@ class HostDatabase:
                 CREATE TABLE IF NOT EXISTS checkpoints (
                     checkpoint_id TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS auth_settings (
+                    key TEXT PRIMARY KEY, value TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS incident_notes (
+                    note_id TEXT PRIMARY KEY, incident_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL, author TEXT NOT NULL, body TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_incident_notes_incident ON incident_notes(incident_id, created_at);
                 INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '1');
                 """
             )
@@ -142,6 +157,68 @@ class HostDatabase:
         row = self.connection.execute("SELECT value FROM checkpoints WHERE checkpoint_id = ?", (checkpoint_id,)).fetchone()
         return None if row is None else str(row["value"])
 
+    def session_secret(self) -> str:
+        with self._lock, self.connection:
+            row = self.connection.execute("SELECT value FROM auth_settings WHERE key = 'session_secret'").fetchone()
+            if row:
+                return str(row["value"])
+            secret = secrets.token_hex(32)
+            self.connection.execute("INSERT OR IGNORE INTO auth_settings(key, value) VALUES ('session_secret', ?)", (secret,))
+            return str(self.connection.execute(
+                "SELECT value FROM auth_settings WHERE key = 'session_secret'"
+            ).fetchone()["value"])
+
+    def has_admin_password(self) -> bool:
+        with self._lock:
+            return self.connection.execute(
+                "SELECT 1 FROM auth_settings WHERE key = 'admin_password_hash'"
+            ).fetchone() is not None
+
+    def set_admin_password(self, password: str) -> None:
+        if not 12 <= len(password) <= 1024:
+            raise ValueError("admin password must be between 12 and 1024 characters")
+        password_hash = generate_password_hash(password, method="scrypt")
+        with self._lock, self.connection:
+            self.connection.execute(
+                "INSERT OR REPLACE INTO auth_settings(key, value) VALUES ('admin_password_hash', ?)",
+                (password_hash,),
+            )
+            self.connection.execute(
+                "INSERT OR REPLACE INTO auth_settings(key, value) VALUES ('auth_version', ?)",
+                (secrets.token_hex(16),),
+            )
+
+    def verify_admin_password(self, password: str) -> bool:
+        if len(password) > 1024:
+            return False
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT value FROM auth_settings WHERE key = 'admin_password_hash'"
+            ).fetchone()
+        return bool(row) and check_password_hash(str(row["value"]), password)
+
+    def auth_version(self) -> str | None:
+        with self._lock:
+            row = self.connection.execute("SELECT value FROM auth_settings WHERE key = 'auth_version'").fetchone()
+        return str(row["value"]) if row else None
+
+    def add_incident_note(self, incident_id: str, body: str, author: str = "admin") -> dict[str, str]:
+        body = body.strip()
+        if not body or len(body) > 2000:
+            raise ValueError("note must be between 1 and 2000 characters")
+        note = {"note_id": uuid.uuid4().hex, "incident_id": incident_id,
+                "created_at": utc_now(), "author": author, "body": body}
+        with self._lock, self.connection:
+            if self.connection.execute(
+                "SELECT 1 FROM incidents WHERE incident_id = ?", (incident_id,)
+            ).fetchone() is None:
+                raise KeyError(incident_id)
+            self.connection.execute(
+                "INSERT INTO incident_notes(note_id, incident_id, created_at, author, body) VALUES (?, ?, ?, ?, ?)",
+                (note["note_id"], note["incident_id"], note["created_at"], note["author"], note["body"]),
+            )
+        return note
+
     def list_alerts(self, limit: int = 100) -> list[dict[str, Any]]:
         rows = self.connection.execute("SELECT payload FROM alerts ORDER BY last_seen DESC LIMIT ?", (max(1, min(limit, 1000)),)).fetchall()
         return [json.loads(row["payload"]) for row in rows]
@@ -191,19 +268,28 @@ class HostDatabase:
         return {"items": items, "total": total,
                 "limit": limit, "offset": offset}
 
-    def incident_counts(self) -> dict[str, int]:
+    def incident_counts(self) -> dict[str, Any]:
         with self._lock:
             rows = self.connection.execute(
                 "SELECT state, COUNT(*) AS count FROM incidents GROUP BY state"
             ).fetchall()
             alerts = self.connection.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
             high_alerts = self.connection.execute(
-                "SELECT COUNT(*) FROM alerts WHERE severity IN ('high', 'critical')"
+                "SELECT COUNT(*) FROM alerts WHERE severity IN ('high', 'critical') AND status != 'false_positive'"
             ).fetchone()[0]
+            severity_rows = self.connection.execute(
+                "SELECT severity, COUNT(*) AS count FROM alerts WHERE status != 'false_positive' GROUP BY severity"
+            ).fetchall()
+            activity_rows = self.connection.execute(
+                "SELECT substr(first_seen, 1, 10) AS day, COUNT(*) AS count FROM incidents "
+                "WHERE first_seen >= date('now', '-6 days') GROUP BY day ORDER BY day"
+            ).fetchall()
         states = {row["state"]: row["count"] for row in rows}
         return {"incidents": sum(states.values()), "open_incidents": sum(
             count for state, count in states.items() if state != "resolved"),
-            "alerts": alerts, "high_alerts": high_alerts}
+            "alerts": alerts, "high_alerts": high_alerts,
+            "severity_counts": {row["severity"]: row["count"] for row in severity_rows},
+            "activity": [{"day": row["day"], "count": row["count"]} for row in activity_rows]}
 
     def get_incident(self, incident_id: str) -> dict[str, Any] | None:
         with self._lock:
@@ -226,11 +312,16 @@ class HostDatabase:
                 event_id for detection in detections for event_id in detection.get("event_ids", [])
             ))
             events = self._records_by_ids("host_events", "event_id", event_ids)
+            note_rows = self.connection.execute(
+                "SELECT note_id, incident_id, created_at, author, body FROM incident_notes "
+                "WHERE incident_id = ? ORDER BY created_at DESC", (incident_id,)
+            ).fetchall()
+            notes = [dict(row) for row in note_rows]
         paths = [alert.get("file_path") for alert in alerts]
         paths.extend(event.get("file_path") for event in events)
         affected_files = sorted({path for path in paths if path})
         return {"incident": incident, "alerts": alerts, "detections": detections,
-                "events": events, "affected_files": affected_files}
+                "events": events, "affected_files": affected_files, "notes": notes}
 
     def _records_by_ids(self, table: str, id_column: str, ids: list[str]) -> list[dict[str, Any]]:
         # Table and column names are fixed by the callers; IDs remain bound parameters.

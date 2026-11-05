@@ -16,6 +16,16 @@ from rt_nid_ml.host.storage import HostDatabase
 
 
 class HostHidsTests(unittest.TestCase):
+    def login(self, client) -> dict[str, str]:
+        response = client.get("/login")
+        self.assertEqual(response.status_code, 200)
+        with client.session_transaction() as browser_session:
+            token = browser_session["csrf_token"]
+        response = client.post("/login", data={"password": "example-local-admin-password", "csrf_token": token})
+        self.assertEqual(response.status_code, 302)
+        csrf = client.get("/api/session").get_json()["csrf_token"]
+        return {"X-CSRF-Token": csrf}
+
     def test_event_validation_and_json_safe_evidence(self) -> None:
         event = HostEvent.create("host-1", "auth", "fixture", action="ssh_login", outcome="failure", evidence={"attempt": 1})
         self.assertEqual(event.event_type, "auth")
@@ -143,7 +153,11 @@ class HostHidsTests(unittest.TestCase):
                 self.assertIn(agent.capabilities.system, {"linux", "windows", "darwin", ""})
                 agent.collect_once()
                 from rt_nid_ml.host.api import create_app
-                response = create_app(agent).test_client().get("/api/status")
+                agent.database.set_admin_password("example-local-admin-password")
+                client = create_app(agent).test_client()
+                self.assertEqual(client.get("/api/status").status_code, 401)
+                self.login(client)
+                response = client.get("/api/status")
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.get_json()["host_id"], "host-1")
             finally:
@@ -157,6 +171,8 @@ class HostHidsTests(unittest.TestCase):
             try:
                 from rt_nid_ml.host.api import create_app
 
+                agent.database.set_admin_password("example-local-admin-password")
+
                 for name in ("secret.conf", "other.conf"):
                     agent.ingest_event(HostEvent.create(
                         "host-1", "file_change", "fixture", file_path=f"/etc/{name}",
@@ -164,6 +180,9 @@ class HostHidsTests(unittest.TestCase):
                         evidence={"sha256": "test-hash"},
                     ))
                 client = create_app(agent).test_client()
+                self.assertEqual(client.get("/").status_code, 302)
+                self.assertEqual(client.get("/api/overview").status_code, 401)
+                headers = self.login(client)
                 page = client.get("/api/incident-page?limit=1&offset=0").get_json()
                 self.assertEqual(page["total"], 2)
                 self.assertEqual(len(page["items"]), 1)
@@ -177,12 +196,56 @@ class HostHidsTests(unittest.TestCase):
                 self.assertEqual(detail["events"][0]["file_path"], "/etc/secret.conf")
                 self.assertEqual(detail["events"][0]["evidence"]["sha256"], "test-hash")
                 self.assertEqual(client.get("/api/overview").get_json()["incidents"], 2)
-                self.assertEqual(client.post(f"/api/incidents/{incident_id}/acknowledge").status_code, 200)
+                self.assertEqual(client.post(f"/api/incidents/{incident_id}/acknowledge").status_code, 403)
+                self.assertEqual(client.post(f"/api/incidents/{incident_id}/acknowledge", headers=headers).status_code, 200)
                 self.assertEqual(client.get("/api/incident-page?state=acknowledged").get_json()["total"], 1)
-                self.assertEqual(client.post(f"/api/incidents/{incident_id}/resolve").status_code, 200)
+                self.assertEqual(client.post(f"/api/incidents/{incident_id}/notes", headers=headers,
+                                             json={"body": "Checked the file owner"}).status_code, 201)
+                self.assertEqual(client.get(f"/api/incidents/{incident_id}").get_json()["notes"][0]["body"],
+                                 "Checked the file owner")
+                alert_id = detail["alerts"][0]["alert_id"]
+                self.assertEqual(client.post(f"/api/alerts/{alert_id}/false-positive", headers=headers).status_code, 200)
+                self.assertEqual(client.get(f"/api/incidents/{incident_id}").get_json()["alerts"][0]["status"],
+                                 "false_positive")
+                self.assertEqual(client.post(f"/api/incidents/{incident_id}/resolve", headers=headers).status_code, 200)
                 self.assertEqual(client.get("/api/incidents/" + incident_id).get_json()["incident"]["state"], "resolved")
                 self.assertEqual(client.get("/api/incidents/missing").status_code, 404)
                 self.assertIn(b"Incident details", client.get("/").data)
+                agent.database.set_admin_password("another-local-admin-password")
+                self.assertEqual(client.get("/api/status").status_code, 401)
+            finally:
+                agent.stop()
+
+    def test_login_logout_and_password_rotation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = HostConfig(host_id="host-1", database_path=Path(directory) / "host.sqlite3",
+                                enabled_collectors=set())
+            agent = HostAgent(config)
+            try:
+                from rt_nid_ml.host.api import create_app
+
+                with self.assertRaises(ValueError):
+                    agent.database.set_admin_password("short")
+                agent.database.set_admin_password("example-local-admin-password")
+                client = create_app(agent).test_client()
+                self.assertEqual(client.get("/").status_code, 302)
+                self.assertEqual(client.get("/api/session").status_code, 401)
+                self.assertEqual(client.post("/login", data={"password": "example-local-admin-password"}).status_code, 403)
+                login_page = client.get("/login")
+                self.assertIn("HttpOnly", login_page.headers.get("Set-Cookie", ""))
+                self.assertIn("SameSite=Strict", login_page.headers.get("Set-Cookie", ""))
+                with client.session_transaction() as browser_session:
+                    token = browser_session["csrf_token"]
+                wrong = client.post("/login", data={"password": "wrong", "csrf_token": token})
+                self.assertEqual(wrong.status_code, 401)
+                headers = self.login(client)
+                self.assertEqual(client.get("/").status_code, 200)
+                self.assertEqual(client.post("/logout").status_code, 403)
+                self.assertEqual(client.post("/logout", headers=headers).status_code, 200)
+                self.assertEqual(client.get("/api/status").status_code, 401)
+                self.login(client)
+                agent.database.set_admin_password("another-local-admin-password")
+                self.assertEqual(client.get("/api/status").status_code, 401)
             finally:
                 agent.stop()
 

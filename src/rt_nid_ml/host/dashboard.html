@@ -21,11 +21,26 @@
     .small { font-size: 12px; }
     .pill { border: 1px solid #315569; background: #122634; padding: 8px 12px; border-radius: 999px; white-space: nowrap; font-size: 12px; font-weight: 700; color: #99dfe2; }
     .pill.bad { color: #ffb8ae; border-color: #714141; background: #301c23; }
+    .top-actions { display: flex; gap: 10px; align-items: center; }
+    .quiet-button { border: 1px solid #3d586b; background: #152637; color: #cce8ed; padding: 9px 13px; border-radius: 9px; font-weight: 700; }
+    .quiet-button:hover { background: #21384c; }
     .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin-bottom: 22px; }
     .stat, .panel { background: #131d2a; border: 1px solid #26374a; box-shadow: 0 10px 35px #03070d32; border-radius: 14px; }
     .stat { padding: 17px 20px; }
     .stat span { color: #9cacc0; font-size: 12px; font-weight: 650; }
     .stat strong { display: block; font-size: 30px; letter-spacing: -.04em; margin-top: 4px; }
+    .visuals { display: grid; grid-template-columns: 1.2fr 1fr; gap: 13px; margin-bottom: 22px; }
+    .visual { padding: 17px 20px; min-width: 0; }
+    .visual h2 { margin-bottom: 14px; }
+    .activity { display: flex; align-items: flex-end; gap: 9px; min-height: 100px; }
+    .day { flex: 1; text-align: center; min-width: 0; }
+    .day-bar { background: linear-gradient(#7ed0d3, #377a97); border-radius: 5px 5px 2px 2px; min-height: 3px; margin: 0 auto 6px; width: min(100%, 36px); }
+    .day-label { display: block; color: #8fa5b8; font-size: 11px; }
+    .severity-row { display: grid; grid-template-columns: 70px 1fr 28px; align-items: center; gap: 10px; margin: 8px 0; font-size: 12px; }
+    .track { background: #263648; height: 9px; border-radius: 8px; overflow: hidden; }
+    .fill { background: #6bc6cc; height: 100%; border-radius: 8px; }
+    .fill.high, .fill.critical { background: #e58079; }
+    .fill.medium { background: #d9af6a; }
     .workspace { display: grid; grid-template-columns: minmax(350px, .95fr) minmax(450px, 1.35fr); gap: 17px; align-items: start; }
     .panel { min-width: 0; overflow: hidden; }
     .panel-head { padding: 20px 22px; border-bottom: 1px solid #26374a; }
@@ -67,6 +82,10 @@
     details { margin-top: 12px; }
     summary { color: #99dfe2; cursor: pointer; font-size: 12px; font-weight: 700; }
     .actions { display: flex; flex-wrap: wrap; gap: 9px; margin: 16px 0; }
+    .note-form { display: grid; gap: 9px; margin: 12px 0; }
+    textarea { width: 100%; min-height: 82px; resize: vertical; color: #e9eef6; background: #0d1621; border: 1px solid #33465b; border-radius: 9px; padding: 11px; font: inherit; }
+    textarea:focus { outline: 2px solid #65b9c755; border-color: #65b9c7; }
+    .note-form button { justify-self: start; border: 1px solid #456075; color: #e3f5f6; background: #213749; border-radius: 8px; padding: 8px 12px; font-weight: 650; }
     .health { margin-top: 18px; padding: 16px 20px; }
     .health-list { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 11px; }
     .health-item { border: 1px solid #2d4656; border-radius: 8px; padding: 8px 10px; font-size: 12px; color: #b8d7de; }
@@ -74,7 +93,7 @@
     .empty { color: #9cacc0; padding: 35px 20px; text-align: center; }
     .notice { margin: 0 0 15px; color: #ffbfaa; font-size: 13px; }
     @media (max-width: 1000px) { .workspace { grid-template-columns: 1fr; } .incident-list, .detail { max-height: none; } }
-    @media (max-width: 650px) { .shell { padding: 16px; } .stats { grid-template-columns: repeat(2, 1fr); } .controls { flex-direction: column; } .facts { grid-template-columns: 1fr; } .top { flex-direction: column; } }
+    @media (max-width: 650px) { .shell { padding: 16px; } .stats { grid-template-columns: repeat(2, 1fr); } .visuals { grid-template-columns: 1fr; } .controls { flex-direction: column; } .facts { grid-template-columns: 1fr; } .top { flex-direction: column; } }
   </style>
 </head>
 <body>
@@ -85,7 +104,7 @@
         <h1>Security incidents</h1>
         <p class="muted" id="host-label">Loading host status…</p>
       </div>
-      <span class="pill" id="health-pill">Connecting…</span>
+      <div class="top-actions"><span class="pill" id="health-pill">Connecting…</span><button class="quiet-button" id="sign-out" type="button">Sign out</button></div>
     </header>
 
     <section class="stats" aria-label="Security overview">
@@ -93,6 +112,11 @@
       <div class="stat"><span>Open incidents</span><strong id="open-incidents">0</strong></div>
       <div class="stat"><span>High severity alerts</span><strong id="high-alerts">0</strong></div>
       <div class="stat"><span>All alerts</span><strong id="total-alerts">0</strong></div>
+    </section>
+
+    <section class="visuals" aria-label="Incident activity and severity">
+      <div class="panel visual"><h2>Incident activity · 7 days</h2><div class="activity" id="activity"></div></div>
+      <div class="panel visual"><h2>Active alert severity</h2><div id="severity"></div></div>
     </section>
 
     <div class="workspace">
@@ -127,7 +151,7 @@
   </main>
 
   <script>
-    const state = { offset: 0, limit: 25, selectedId: null };
+    const state = { offset: 0, limit: 25, selectedId: null, csrfToken: null };
     const $ = (selector) => document.querySelector(selector);
     const node = (tag, className, value) => {
       const element = document.createElement(tag);
@@ -141,8 +165,55 @@
 
     async function getJSON(path) {
       const response = await fetch(path);
+      if (response.status === 401) window.location.assign('/login');
       if (!response.ok) throw new Error(`Request failed (${response.status})`);
       return response.json();
+    }
+
+    async function postJSON(path, data) {
+      const response = await fetch(path, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': state.csrfToken, ...(data ? { 'Content-Type': 'application/json' } : {}) },
+        body: data ? JSON.stringify(data) : undefined,
+      });
+      if (response.status === 401) window.location.assign('/login');
+      if (!response.ok) throw new Error(`Request failed (${response.status})`);
+      return response.json();
+    }
+
+    function renderVisuals(counts) {
+      const activity = $('#activity');
+      activity.replaceChildren();
+      const byDay = new Map((counts.activity || []).map(item => [item.day, item.count]));
+      const dates = Array.from({ length: 7 }, (_, index) => {
+        const date = new Date();
+        date.setUTCDate(date.getUTCDate() - (6 - index));
+        return date.toISOString().slice(0, 10);
+      });
+      const maxDay = Math.max(1, ...dates.map(day => byDay.get(day) || 0));
+      for (const day of dates) {
+        const count = byDay.get(day) || 0;
+        const column = node('div', 'day');
+        const bar = node('div', 'day-bar');
+        bar.style.height = `${Math.max(3, 75 * count / maxDay)}px`;
+        bar.title = `${day}: ${count} incident${count === 1 ? '' : 's'}`;
+        column.append(bar, node('span', 'day-label', day.slice(5)));
+        activity.append(column);
+      }
+      const severity = $('#severity');
+      severity.replaceChildren();
+      const groups = counts.severity_counts || {};
+      const maxSeverity = Math.max(1, ...Object.values(groups));
+      for (const name of ['critical', 'high', 'medium', 'low', 'informational']) {
+        const count = groups[name] || 0;
+        const row = node('div', 'severity-row');
+        const track = node('div', 'track');
+        const fill = node('div', `fill ${name}`);
+        fill.style.width = `${100 * count / maxSeverity}%`;
+        track.append(fill);
+        row.append(node('span', '', name), track, node('strong', '', count));
+        severity.append(row);
+      }
     }
 
     function fact(name, value) {
@@ -181,6 +252,7 @@
         $('#open-incidents').textContent = counts.open_incidents;
         $('#high-alerts').textContent = counts.high_alerts;
         $('#total-alerts').textContent = counts.alerts;
+        renderVisuals(counts);
         const degraded = status.collectors.filter(item => !item.available);
         const pill = $('#health-pill');
         pill.textContent = degraded.length ? `${degraded.length} collector${degraded.length === 1 ? '' : 's'} degraded` : 'All collectors healthy';
@@ -254,7 +326,7 @@
     }
 
     function renderDetail(bundle) {
-      const { incident, alerts, detections, events, affected_files: files } = bundle;
+      const { incident, alerts, detections, events, affected_files: files, notes = [] } = bundle;
       const detail = $('#detail');
       detail.replaceChildren();
       const title = node('div', 'detail-title');
@@ -272,6 +344,18 @@
         fact('Subject', incident.subject || alerts[0]?.evidence?.username || alerts[0]?.evidence?.target_account),
       );
       detail.append(facts);
+
+      const exportButton = node('button', 'quiet-button', 'Export incident JSON');
+      exportButton.type = 'button';
+      exportButton.addEventListener('click', () => {
+        const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' }));
+        const link = node('a');
+        link.href = url;
+        link.download = `incident-${incident.incident_id}.json`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      });
+      detail.append(exportButton);
 
       if (incident.state !== 'resolved') {
         const actions = node('div', 'actions');
@@ -291,14 +375,52 @@
       else assets.append(node('p', 'muted small', 'No file path is associated with this incident.'));
       detail.append(assets);
 
+      const noteSection = section('Investigation notes', notes.length);
+      const noteForm = node('form', 'note-form');
+      const noteInput = node('textarea');
+      noteInput.placeholder = 'Record what you checked or discovered…';
+      noteInput.maxLength = 2000;
+      noteInput.setAttribute('aria-label', 'New investigation note');
+      const noteButton = node('button', '', 'Add note');
+      noteButton.type = 'submit';
+      noteForm.append(noteInput, noteButton);
+      noteForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        try {
+          await postJSON(`/api/incidents/${encodeURIComponent(incident.incident_id)}/notes`, { body: noteInput.value });
+          await selectIncident(incident.incident_id);
+        } catch (error) {
+          noteForm.prepend(node('p', 'notice', 'Could not save the note. Check that it is 1–2000 characters.'));
+        }
+      });
+      noteSection.append(noteForm);
+      for (const note of notes) noteSection.append(record(note.author || 'admin', 'note', note.body, note.created_at, { note_id: note.note_id }));
+      detail.append(noteSection);
+
       const alertSection = section('Related alerts', alerts.length);
-      for (const alert of alerts) alertSection.append(record(
-        alert.title || alert.rule_id, alert.status || alert.severity,
-        alert.description, alert.last_seen,
-        { alert_id: alert.alert_id, file_path: alert.file_path, source_ip: alert.source_ip,
-          confidence: alert.confidence, investigation: alert.investigation_recommendation,
-          evidence: alert.evidence, tactic: alert.tactic, technique_id: alert.technique_id },
-      ));
+      for (const alert of alerts) {
+        const alertCard = record(
+          alert.title || alert.rule_id, alert.status || alert.severity,
+          alert.description, alert.last_seen,
+          { alert_id: alert.alert_id, file_path: alert.file_path, source_ip: alert.source_ip,
+            confidence: alert.confidence, investigation: alert.investigation_recommendation,
+            evidence: alert.evidence, tactic: alert.tactic, technique_id: alert.technique_id },
+        );
+        if (alert.status !== 'false_positive') {
+          const falsePositive = node('button', 'quiet-button', 'Mark false positive');
+          falsePositive.type = 'button';
+          falsePositive.addEventListener('click', async () => {
+            try {
+              await postJSON(`/api/alerts/${encodeURIComponent(alert.alert_id)}/false-positive`);
+              await Promise.all([refreshOverview(), selectIncident(incident.incident_id)]);
+            } catch (error) {
+              alertCard.prepend(node('p', 'notice', 'Could not update this alert.'));
+            }
+          });
+          alertCard.append(falsePositive);
+        }
+        alertSection.append(alertCard);
+      }
       detail.append(alertSection);
 
       const detectionSection = section('Detections and guidance', detections.length);
@@ -324,8 +446,7 @@
 
     async function changeState(incidentId, action) {
       try {
-        const response = await fetch(`/api/incidents/${encodeURIComponent(incidentId)}/${action}`, { method: 'POST' });
-        if (!response.ok) throw new Error(`Request failed (${response.status})`);
+        await postJSON(`/api/incidents/${encodeURIComponent(incidentId)}/${action}`);
         await Promise.all([refreshOverview(), refreshIncidents()]);
         await selectIncident(incidentId);
       } catch (error) {
@@ -341,9 +462,19 @@
       clearTimeout(searchTimer);
       searchTimer = setTimeout(() => { state.offset = 0; refreshIncidents(); }, 250);
     });
-    refreshOverview();
-    refreshIncidents();
-    setInterval(() => { refreshOverview(); refreshIncidents(); }, 10000);
+    $('#sign-out').addEventListener('click', async () => {
+      try { await postJSON('/logout'); } finally { window.location.assign('/login'); }
+    });
+    (async () => {
+      try {
+        state.csrfToken = (await getJSON('/api/session')).csrf_token;
+        await Promise.all([refreshOverview(), refreshIncidents()]);
+        setInterval(() => { refreshOverview(); refreshIncidents(); }, 10000);
+      } catch (error) {
+        $('#health-pill').textContent = 'Unable to load dashboard';
+        $('#health-pill').classList.add('bad');
+      }
+    })();
   </script>
 </body>
 </html>
