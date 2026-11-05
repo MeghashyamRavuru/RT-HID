@@ -1,0 +1,163 @@
+import json
+import platform
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from rt_nid_ml.host.agent import HostAgent
+from rt_nid_ml.host.collectors.linux import LinuxFileIntegrityCollector
+from rt_nid_ml.host.collectors.windows import WindowsEventLogCollector, parse_security_event
+from rt_nid_ml.host.config import HostConfig
+from rt_nid_ml.host.detection.engine import HostDetectionEngine
+from rt_nid_ml.host.models import CollectorStatus, HostEvent
+from rt_nid_ml.host.platform import PlatformCapabilities
+from rt_nid_ml.host.storage import HostDatabase
+
+
+class HostHidsTests(unittest.TestCase):
+    def test_event_validation_and_json_safe_evidence(self) -> None:
+        event = HostEvent.create("host-1", "auth", "fixture", action="ssh_login", outcome="failure", evidence={"attempt": 1})
+        self.assertEqual(event.event_type, "auth")
+        self.assertEqual(event.to_dict()["host_id"], "host-1")
+        with self.assertRaises(ValueError):
+            HostEvent.create("host-1", "not-real", "fixture")
+
+    def test_auth_rule_requires_threshold(self) -> None:
+        config = HostConfig(host_id="host-1", auth_failure_threshold=3)
+        engine = HostDetectionEngine(config)
+        detections = []
+        for index in range(3):
+            detections.extend(engine.evaluate(HostEvent.create(
+                "host-1", "auth", "fixture", timestamp=f"2026-01-01T00:00:0{index}+00:00",
+                action="ssh_login", outcome="failure", source_ip="192.0.2.10", username="root",
+            )))
+        self.assertEqual(len(detections), 1)
+        self.assertEqual(detections[0].rule_id, "HIDS-AUTH-001")
+        self.assertEqual(detections[0].technique_id, "T1110")
+
+    def test_sqlite_persists_events_detections_and_status(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database = HostDatabase(Path(directory) / "host.sqlite3")
+            event = HostEvent.create("host-1", "system_snapshot", "fixture")
+            self.assertTrue(database.save_event(event))
+            self.assertFalse(database.save_event(event))
+            status = CollectorStatus("collector", "linux", True, True)
+            database.save_collector_status(status)
+            database.set_checkpoint("cursor", "12")
+            self.assertEqual(database.get_checkpoint("cursor"), "12")
+            database.close()
+            reopened = HostDatabase(Path(directory) / "host.sqlite3")
+            self.assertEqual(reopened.get_checkpoint("cursor"), "12")
+            reopened.close()
+
+    def test_file_integrity_baseline_then_change(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "sensitive.conf"
+            path.write_text("safe")
+            database = HostDatabase(Path(directory) / "host.sqlite3")
+            events = []
+            config = HostConfig(host_id="host-1", monitored_paths=[path])
+            try:
+                collector = LinuxFileIntegrityCollector("host-1", config, database, events.append)
+                self.assertEqual(collector.run_once(), [])
+                path.write_text("changed")
+                changed = collector.run_once()
+                self.assertEqual(len(changed), 1)
+                self.assertEqual(changed[0].event_type, "file_change")
+                self.assertEqual(changed[0].action, "modify")
+                path.unlink()
+                deleted = collector.run_once()
+                self.assertEqual(len(deleted), 1)
+                self.assertEqual(deleted[0].action, "delete")
+            finally:
+                database.close()
+
+    def test_windows_event_log_degrades_off_platform(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database = HostDatabase(Path(directory) / "host.sqlite3")
+            try:
+                collector = WindowsEventLogCollector("host-1", database, lambda _event: None)
+                if platform.system().lower() != "windows":
+                    self.assertEqual(collector.run_once(), [])
+                    self.assertFalse(collector.status.available)
+            finally:
+                database.close()
+
+    def test_windows_failed_logon_and_security_change(self) -> None:
+        def xml(event_id: int, record_id: int, fields: str = "") -> str:
+            return ("<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'>"
+                    f"<System><EventID>{event_id}</EventID><EventRecordID>{record_id}</EventRecordID>"
+                    "<TimeCreated SystemTime='2026-01-01T00:00:00Z'/></System>"
+                    f"<EventData>{fields}</EventData></Event>")
+
+        parsed = parse_security_event(xml(4625, 7, "<Data Name='TargetUserName'>admin</Data>"
+                                          "<Data Name='IpAddress'>192.0.2.10</Data>"
+                                          "<Data Name='LogonType'>10</Data>"), "host-1")
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed[1].action, "remote_login")
+        self.assertEqual(parsed[1].event_id, "windows-security-7-2026-01-01T00:00:00Z")
+        engine = HostDetectionEngine(HostConfig(host_id="host-1", auth_failure_threshold=2))
+        self.assertEqual(engine.evaluate(parsed[1]), [])
+        parsed2 = parse_security_event(xml(4625, 8, "<Data Name='IpAddress'>192.0.2.10</Data>"
+                                           "<Data Name='LogonType'>10</Data>"), "host-1")
+        self.assertEqual(engine.evaluate(parsed2[1])[0].category, "brute_force")
+        cleared = parse_security_event(xml(1102, 9), "host-1")
+        self.assertEqual(engine.evaluate(cleared[1])[0].rule_id, "HIDS-SEC-001")
+
+    def test_cross_platform_host_rules(self) -> None:
+        engine = HostDetectionEngine(HostConfig(host_id="host-1", auth_failure_threshold=2))
+        for index in range(2):
+            event = HostEvent.create("host-1", "auth", "fixture", action="remote_login",
+                                     outcome="failure", source_ip="192.0.2.8",
+                                     timestamp=f"2026-01-01T00:00:0{index}+00:00")
+            detections = engine.evaluate(event)
+        self.assertEqual(detections[0].category, "brute_force")
+        success = HostEvent.create("host-1", "auth", "fixture", action="remote_login",
+                                   outcome="success", source_ip="192.0.2.8",
+                                   timestamp="2026-01-01T00:00:02+00:00")
+        self.assertEqual(engine.evaluate(success)[0].rule_id, "HIDS-AUTH-003")
+        process = HostEvent.create("host-1", "process_start", "fixture",
+                                   executable_path=r"C:\Users\Alice\AppData\Local\Temp\malware.exe")
+        self.assertEqual(engine.evaluate(process)[0].rule_id, "HIDS-EXEC-001")
+
+    def test_windows_agent_has_host_collectors(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = HostConfig(host_id="host-1", database_path=Path(directory) / "host.sqlite3")
+            capabilities = PlatformCapabilities("windows", "11", "AMD64", ())
+            with patch("rt_nid_ml.host.agent.detect_capabilities", return_value=capabilities):
+                agent = HostAgent(config)
+            try:
+                self.assertEqual({collector.collector_id for collector in agent.collectors}, {
+                    "windows_event_log", "windows_process", "windows_network",
+                    "windows_file_integrity", "windows_system",
+                })
+            finally:
+                agent.stop()
+
+    def test_agent_reports_local_capabilities_and_api_reads_persisted_data(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = HostConfig(host_id="host-1", database_path=Path(directory) / "host.sqlite3", enabled_collectors={"system"})
+            agent = HostAgent(config)
+            try:
+                self.assertIn(agent.capabilities.system, {"linux", "windows", "darwin", ""})
+                agent.collect_once()
+                from rt_nid_ml.host.api import create_app
+                response = create_app(agent).test_client().get("/api/status")
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.get_json()["host_id"], "host-1")
+            finally:
+                agent.stop()
+
+    def test_config_json_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            path.write_text(json.dumps({"host_id": "h", "database_path": str(Path(directory) / "db.sqlite3"), "enabled_collectors": ["system"]}))
+            config = HostConfig.from_json(path)
+            config.validate()
+            self.assertEqual(config.host_id, "h")
+            self.assertEqual(config.enabled_collectors, {"system"})
+
+
+if __name__ == "__main__":
+    unittest.main()

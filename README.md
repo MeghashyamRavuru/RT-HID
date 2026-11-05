@@ -1,159 +1,73 @@
-# RT-NID-ML
+# RT-NID-ML: local host intrusion detection
 
-A lightweight flow-based network intrusion detection pipeline. It trains a multiclass model, replays PCAP files, sniffs live TCP traffic with Scapy, and exposes a small polling dashboard for alerts.
+RT-NID-ML runs on an individual Ubuntu/Linux or Windows computer. It collects local security signals, applies explainable detection rules, stores evidence and incidents in a local SQLite database, and shows alerts on a dashboard bound to `127.0.0.1`. It does not require a central server or send events elsewhere. Despite the historical repository name, the current detector does not use machine learning.
 
-## CICIDS2017 training
+The [project direction note](PROJECT_DIRECTION.md) explains the earlier network IDS work and why this repository now focuses on the host agent.
 
-1. Install dependencies:
+## What it monitors
+
+| Signal | Linux | Windows |
+| --- | --- | --- |
+| Authentication | SSH and sudo entries from configured auth logs | Security log failed/successful local and remote logons |
+| Processes | Newly started processes via `psutil` | Newly started processes via `psutil` |
+| Network | New local listening services | New local listening services |
+| File integrity | Configured sensitive files | Configured sensitive files |
+| Security changes | File modifications and permissions | Audit log clearing, account creation, service installation |
+| System health | CPU, memory, boot snapshot | CPU, memory, boot snapshot |
+
+Rules alert on repeated authentication failures, a successful login after failures, execution from temporary directories, new listeners, monitored file changes, and the listed Windows security changes. These are indicators for investigation, not proof of compromise. The initial process, listener, file, and Windows Security log scans establish a baseline and do not raise retroactive alerts.
+
+## Install
+
+Use Python 3.10 or newer. From the repository root:
 
 ```bash
-pip install -r requirements.txt
+python -m venv .venv
 ```
 
-2. Place the CICIDS2017 CSV files in `datasets/` (or provide another directory).
-
-3. Train and evaluate:
+On Ubuntu/Linux:
 
 ```bash
-python -m rt_nid_ml.train --dataset-dir datasets --output models/cicids_flow_model.joblib
+. .venv/bin/activate
+pip install -e .
 ```
 
-The trainer normalizes CICIDS2017 labels, samples up to 15,000 rows per mapped class, and handles missing/non-finite values. Evaluation uses two protocols: a duplicate-aware stratified row split and an unseen-capture-file split where the dataset permits it. Flow fingerprints found in both partitions are excluded from test metrics. Reports include overall metrics, per-class support and capture-file counts, and a macro-F1 restricted to classes with at least 50 independent test samples.
+On Windows PowerShell:
 
-The final test is kept separate from a calibration partition. A sigmoid-calibrated Random Forest selects operating thresholds from benign calibration flows for target FPRs of 1%, 0.5%, and 0.1%. Each report includes the actual FPR, precision, recall, and TP/FP/FN/TN counts; target FPRs are operating objectives, not guarantees. The artifact records calibration metadata, thresholds, scikit-learn version, feature schema version, and is reloaded and smoke-tested after saving.
-
-Heartbleed and Infiltration are always marked statistically insufficient because they occur in too few records and capture files for reliable unseen-file claims. Capture-file results should therefore be treated as the more conservative generalization estimate; the random row split is useful for comparison but can still share capture conditions between train and test.
-
-**Compatibility warning:** The saved CICIDS2017 artifact uses CICFlowMeter flow-level features. The current live detector still extracts a different 10-feature packet-window schema. Do not pass `cicids_flow_model.joblib` to the current detector until its feature extraction is aligned in a separate integration step.
-
-## Phase 2 flow extraction
-
-`src/rt_nid_ml/flow_extractor.py` contains an independent bidirectional flow
-engine. It accepts synthetic or capture-adapter events containing timestamp,
-IPv4 endpoints and ports, protocol, packet size, optional payload size, and
-TCP flags. Canonical five-tuples merge forward and reverse packets while
-keeping direction-specific counters. Active and inactive timeouts emit
-completed flow records, and `max_flows` bounds memory with explicit capacity
-eviction records.
-
-The `LIVE_FLOW_FEATURE_COLUMNS` schema is a new live numeric schema based on
-these packet events. It is not equivalent to the 21 CICFlowMeter training
-features and is not connected to model inference yet. IPv4 TCP and UDP are
-supported; IPv6 and other protocols are rejected explicitly until a later
-extension.
-
-## Phase 3A Scapy capture
-
-`src/rt_nid_ml/scapy_adapter.py` translates Scapy IPv4 TCP/UDP packets into
-the Phase 2 `PacketEvent` contract and forwards them to the existing flow
-extractor. `ScapyCapture` accepts a configurable interface and BPF filter,
-supports blocking `run()` and non-blocking `start_background()` capture, and
-returns structured capture statistics. It handles malformed packets,
-unsupported protocols, capture errors, and shutdown flushing without invoking
-the ML model or dashboard.
-
-Live capture may require Npcap/libpcap and administrator privileges. The
-adapter does not make the Phase 2 live features equivalent to CICFlowMeter,
-and it is not yet connected to model inference.
-
-## Phase 3B live-flow dataset collection
-
-`src/rt_nid_ml/dataset_collector.py` consumes completed `FlowRecord` objects
-and writes append-only `session_<id>.csv` files with JSON sidecars. Each row
-contains all 15 live features, canonical flow endpoints and protocol, start
-and end timestamps, lifecycle reason, session ID, sensor ID, experiment ID,
-experiment window, target IP, ground-truth label, label source, confidence,
-clock uncertainty, and labeling rationale. Packet payload contents are never
-stored.
-
-Labels are assigned only when explicit experiment metadata overlaps the flow
-time window and one of the flow endpoints matches the experiment target. The
-supported labels are `normal`, `port_scan`, `brute_force`, `dos`, and
-`unknown`; unmatched or conflicting records remain `unknown`. Manual review
-can create a derived corrected CSV with original label provenance:
-
-```bash
-python -m rt_nid_ml.dataset_collector validate path/to/session.csv
+```powershell
+.venv\Scripts\Activate.ps1
+pip install -e .
 ```
 
-Validation reports schema mismatches, missing or invalid values, duplicate
-flows, incomplete lifecycle records, unknown labels, and label/session/
-protocol distributions. It does not silently delete questionable rows.
+The Windows dependency `pywin32` is installed automatically on Windows. Reading the Security log may require administrator or appropriate event log permissions and the corresponding Windows audit policies. Linux auth logs and protected files likewise require read access. Collectors report degraded status when permissions or dependencies are missing.
 
-Collection requires an explicit experiment metadata JSON file for trusted
-labels and can be started with the Phase 3A capture adapter. This phase does
-not train or invoke an ML model.
+## Run on one host
 
-## Phase 4 live-compatible training
-
-`src/rt_nid_ml/live_train.py` is a separate trainer for collected
-`live-flow-dataset-v1` sessions. It validates CSV sidecars and the exact 15
-`LIVE_FLOW_FEATURE_COLUMNS`, excludes unknown/invalid/duplicate rows with
-reported reasons, maps verified attack labels to either binary `suspicious`
-or distinct `port_scan`/`brute_force`/`dos` classes, and refuses runs without
-enough independent session support.
-
-Training uses disjoint session-aware train, calibration, threshold, and final
-test partitions. It compares Random Forest, Extra Trees, and histogram
-gradient boosting, applies sigmoid calibration, and selects 1%, 0.5%, and
-0.1% FPR operating points only from the threshold partition. Unsupported FPR
-targets are marked rather than claimed.
-
-Example:
+Start the monitor and local dashboard together:
 
 ```bash
-python -m rt_nid_ml.live_train --dataset-dir collected --output models/live_flow_model.joblib --approach binary
+python -m rt_nid_ml.host.cli dashboard
 ```
 
-The resulting artifact is tagged `live_flow_model` and is intentionally not
-compatible with the CICIDS2017 artifact or the existing detector yet.
-
-## Phase 5 live inference
-
-`src/rt_nid_ml/live_detector.py` loads only validated `live_flow_model`
-artifacts and connects completed Phase 2 flows to calibrated inference through
-the Phase 3A capture adapter. It validates the exact feature order, schema and
-artifact versions, estimator/calibrator class ordering, calibration metadata,
-and every threshold configuration before processing traffic.
-
-Binary artifacts produce `benign` or `suspicious`; multiclass artifacts
-produce `port_scan`, `brute_force`, or `dos` when the selected threshold is
-supported. Invalid features, unsupported thresholds, incomplete flows under
-the default policy, invalid probabilities, and uncertain decisions return
-structured `unknown` results. Completed flow IDs are deduplicated and all
-results retain flow lifecycle metadata.
-
-Example, without dashboard or remote alert integration:
+Open `http://127.0.0.1:5000` on that same computer. The dashboard shows locally stored alerts and incidents. It is bound to loopback by default. To run without the web UI:
 
 ```bash
-python -m rt_nid_ml.live_detector --interface Ethernet --model models/live_flow_model.joblib
+python -m rt_nid_ml.host.cli monitor
 ```
 
-This validates the software pipeline only; it does not establish real-world
-detection effectiveness.
+Other commands are `status`, `alerts`, and `incidents`. Pass `--config config/host_ids.json` before the command to use the sample Linux configuration. Without a config file, the agent uses the machine hostname as its host ID and chooses platform defaults. Its database is `data/host_ids.sqlite3`; this runtime data is ignored by Git.
 
-## Phase 6 alert management
+Example Linux service files are in `packaging/`. The supplied systemd unit expects a checkout at `/opt/rt-nid-ml` and config at `/etc/rt-nid-ml/host_ids.json`; edit those paths for another location. The service runs the monitor and dashboard locally.
 
-`src/rt_nid_ml/alert_manager.py` consumes immutable `DetectionResult` values
-after inference. It preserves raw detection evidence and applies configurable
-port-scan, brute-force-like, and DoS-like temporal correlation rules without
-changing model probabilities. Allowlists, source rate limits, duplicate
-suppression, cooldowns, sensitive-service severity adjustments, bounded event
-retention, and incident retention are configurable through
-`AlertManagerConfig`.
+## Limits
 
-Security alerts include stable incident references, source/target details,
-related event IDs, raw detection evidence, severity, confidence, suppression
-state, and correlation rationale. Incidents support `new`, `updated`,
-`acknowledged`, and `resolved` states. Suppressed and unknown detections are
-retained as structured evidence; they are not silently discarded. This phase
-does not connect alerts to the dashboard or remote ingestion backend.
+- The Windows Security collector reads event IDs 4624, 4625, 1102, 4697, and 4720. It needs Security log access and relevant audit policies. It does not inspect every Windows attack technique.
+- Linux auth parsing currently covers common SSH and sudo log lines. Some distributions use only journald or different log formats; configure a readable auth log path or add a collector for those sources.
+- Process and listener collection polls at configured intervals, so short-lived activity can be missed. File integrity checks only configured paths. The program raises alerts; it does not block attacks or remove malware.
+- The `retention_days` setting is reserved for a future retention job. No automatic database pruning is implemented yet.
 
-## Existing detector workflow
-
-The existing detector remains unchanged by this training update. Use a model already compatible with its current feature schema for PCAP replay/live capture:
+## Tests
 
 ```bash
-python -m rt_nid_ml.detector --pcap capture.pcap --model models/nid_model.joblib
-python -m rt_nid_ml.detector --interface Ethernet --model models/nid_model.joblib
+python -m unittest discover -s tests -v
 ```

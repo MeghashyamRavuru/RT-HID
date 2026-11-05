@@ -1,0 +1,18 @@
+{
+  "host_id": "replace-with-host-id",
+  "database_path": "data/host_ids.sqlite3",
+  "dashboard_host": "127.0.0.1",
+  "dashboard_port": 5000,
+  "auth_log_paths": ["/var/log/auth.log", "/var/log/secure"],
+  "monitored_paths": ["/etc/passwd", "/etc/shadow", "/etc/sudoers", "/etc/ssh/sshd_config"],
+  "process_interval_seconds": 10,
+  "network_interval_seconds": 15,
+  "system_interval_seconds": 30,
+  "auth_interval_seconds": 2,
+  "file_integrity_interval_seconds": 30,
+  "auth_failure_threshold": 5,
+  "auth_failure_window_seconds": 300,
+  "alert_cooldown_seconds": 300,
+  "retention_days": 30,
+  "enabled_collectors": ["auth", "process", "network", "file_integrity", "system", "event_log"]
+}
