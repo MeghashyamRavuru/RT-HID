@@ -44,6 +44,7 @@ class HostDatabase:
                 );
                 CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
                 CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity);
+                CREATE INDEX IF NOT EXISTS idx_alerts_incident ON alerts(incident_id);
                 CREATE TABLE IF NOT EXISTS incidents (
                     incident_id TEXT PRIMARY KEY, state TEXT NOT NULL, first_seen TEXT NOT NULL,
                     last_seen TEXT NOT NULL, payload TEXT NOT NULL
@@ -148,6 +149,100 @@ class HostDatabase:
     def list_incidents(self, limit: int = 100) -> list[dict[str, Any]]:
         rows = self.connection.execute("SELECT payload FROM incidents ORDER BY last_seen DESC LIMIT ?", (max(1, min(limit, 1000)),)).fetchall()
         return [json.loads(row["payload"]) for row in rows]
+
+    def page_incidents(
+        self, limit: int = 25, offset: int = 0, state: str = "all", query: str = ""
+    ) -> dict[str, Any]:
+        limit = max(1, min(limit, 100))
+        offset = max(0, offset)
+        clauses: list[str] = []
+        params: list[Any] = []
+        if state != "all":
+            clauses.append("state = ?")
+            params.append(state)
+        if query:
+            clauses.append("(payload LIKE ? ESCAPE '\\' OR EXISTS ("
+                           "SELECT 1 FROM alerts WHERE alerts.incident_id = incidents.incident_id "
+                           "AND alerts.payload LIKE ? ESCAPE '\\'))")
+            escaped = query[:100].replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            params.extend((f"%{escaped}%", f"%{escaped}%"))
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        with self._lock:
+            total = self.connection.execute("SELECT COUNT(*) FROM incidents" + where, params).fetchone()[0]
+            rows = self.connection.execute(
+                "SELECT payload FROM incidents" + where + " ORDER BY last_seen DESC LIMIT ? OFFSET ?",
+                (*params, limit, offset),
+            ).fetchall()
+            items = []
+            for row in rows:
+                incident = json.loads(row["payload"])
+                if not incident.get("title") or not incident.get("severity"):
+                    latest = self.connection.execute(
+                        "SELECT payload FROM alerts WHERE incident_id = ? ORDER BY last_seen DESC LIMIT 1",
+                        (incident["incident_id"],),
+                    ).fetchone()
+                    if latest:
+                        alert = json.loads(latest["payload"])
+                        incident.setdefault("title", alert.get("title"))
+                        incident.setdefault("severity", alert.get("severity"))
+                        incident.setdefault("subject", alert.get("file_path") or alert.get("source_ip")
+                                            or alert.get("evidence", {}).get("username"))
+                items.append(incident)
+        return {"items": items, "total": total,
+                "limit": limit, "offset": offset}
+
+    def incident_counts(self) -> dict[str, int]:
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT state, COUNT(*) AS count FROM incidents GROUP BY state"
+            ).fetchall()
+            alerts = self.connection.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
+            high_alerts = self.connection.execute(
+                "SELECT COUNT(*) FROM alerts WHERE severity IN ('high', 'critical')"
+            ).fetchone()[0]
+        states = {row["state"]: row["count"] for row in rows}
+        return {"incidents": sum(states.values()), "open_incidents": sum(
+            count for state, count in states.items() if state != "resolved"),
+            "alerts": alerts, "high_alerts": high_alerts}
+
+    def get_incident(self, incident_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT payload FROM incidents WHERE incident_id = ?", (incident_id,)
+            ).fetchone()
+        return json.loads(row["payload"]) if row else None
+
+    def get_incident_detail(self, incident_id: str) -> dict[str, Any] | None:
+        incident = self.get_incident(incident_id)
+        if incident is None:
+            return None
+        with self._lock:
+            alert_rows = self.connection.execute(
+                "SELECT payload FROM alerts WHERE incident_id = ? ORDER BY last_seen DESC", (incident_id,)
+            ).fetchall()
+            alerts = [json.loads(row["payload"]) for row in alert_rows]
+            detections = self._records_by_ids("detections", "detection_id", incident.get("detection_ids", []))
+            event_ids = list(dict.fromkeys(
+                event_id for detection in detections for event_id in detection.get("event_ids", [])
+            ))
+            events = self._records_by_ids("host_events", "event_id", event_ids)
+        paths = [alert.get("file_path") for alert in alerts]
+        paths.extend(event.get("file_path") for event in events)
+        affected_files = sorted({path for path in paths if path})
+        return {"incident": incident, "alerts": alerts, "detections": detections,
+                "events": events, "affected_files": affected_files}
+
+    def _records_by_ids(self, table: str, id_column: str, ids: list[str]) -> list[dict[str, Any]]:
+        # Table and column names are fixed by the callers; IDs remain bound parameters.
+        records: dict[str, dict[str, Any]] = {}
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            placeholders = ",".join("?" for _ in chunk)
+            rows = self.connection.execute(
+                f"SELECT {id_column}, payload FROM {table} WHERE {id_column} IN ({placeholders})", chunk
+            ).fetchall()
+            records.update({row[id_column]: json.loads(row["payload"]) for row in rows})
+        return [records[item_id] for item_id in ids if item_id in records]
 
     def close(self) -> None:
         with self._lock:

@@ -65,11 +65,16 @@ class HostAlertManager:
             incident = {
                 "incident_id": incident_id,
                 "state": state,
-                "first_seen": detection.timestamp,
+                "first_seen": existing.get("first_seen", detection.timestamp) if existing else detection.timestamp,
                 "last_seen": detection.timestamp,
                 "host_id": detection.host_id,
                 "rule_id": detection.rule_id,
+                "title": detection.rule_name,
+                "severity": detection.severity,
                 "category": detection.category,
+                "subject": str(subject),
+                "file_path": detection.evidence.get("file_path"),
+                "source_ip": detection.evidence.get("source_ip"),
                 "alert_ids": (existing.get("alert_ids", []) if existing else []) + [alert["alert_id"]],
                 "detection_ids": (existing.get("detection_ids", []) if existing else []) + [detection.detection_id],
             }

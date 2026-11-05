@@ -149,6 +149,43 @@ class HostHidsTests(unittest.TestCase):
             finally:
                 agent.stop()
 
+    def test_incident_detail_shows_affected_file_and_source_event(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = HostConfig(host_id="host-1", database_path=Path(directory) / "host.sqlite3",
+                                enabled_collectors=set())
+            agent = HostAgent(config)
+            try:
+                from rt_nid_ml.host.api import create_app
+
+                for name in ("secret.conf", "other.conf"):
+                    agent.ingest_event(HostEvent.create(
+                        "host-1", "file_change", "fixture", file_path=f"/etc/{name}",
+                        action="modify", outcome="observed",
+                        evidence={"sha256": "test-hash"},
+                    ))
+                client = create_app(agent).test_client()
+                page = client.get("/api/incident-page?limit=1&offset=0").get_json()
+                self.assertEqual(page["total"], 2)
+                self.assertEqual(len(page["items"]), 1)
+                filtered = client.get("/api/incident-page?q=secret.conf").get_json()
+                self.assertEqual(filtered["total"], 1)
+                incident_id = filtered["items"][0]["incident_id"]
+                detail = client.get(f"/api/incidents/{incident_id}").get_json()
+                self.assertEqual(detail["affected_files"], ["/etc/secret.conf"])
+                self.assertEqual(len(detail["alerts"]), 1)
+                self.assertEqual(len(detail["detections"]), 1)
+                self.assertEqual(detail["events"][0]["file_path"], "/etc/secret.conf")
+                self.assertEqual(detail["events"][0]["evidence"]["sha256"], "test-hash")
+                self.assertEqual(client.get("/api/overview").get_json()["incidents"], 2)
+                self.assertEqual(client.post(f"/api/incidents/{incident_id}/acknowledge").status_code, 200)
+                self.assertEqual(client.get("/api/incident-page?state=acknowledged").get_json()["total"], 1)
+                self.assertEqual(client.post(f"/api/incidents/{incident_id}/resolve").status_code, 200)
+                self.assertEqual(client.get("/api/incidents/" + incident_id).get_json()["incident"]["state"], "resolved")
+                self.assertEqual(client.get("/api/incidents/missing").status_code, 404)
+                self.assertIn(b"Incident details", client.get("/").data)
+            finally:
+                agent.stop()
+
     def test_config_json_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"

@@ -49,7 +49,7 @@ Start the monitor and local dashboard together:
 python -m rt_nid_ml.host.cli dashboard
 ```
 
-Open `http://127.0.0.1:5000` on that same computer. The dashboard shows locally stored alerts and incidents. It is bound to loopback by default. To run without the web UI:
+Open `http://127.0.0.1:5000` on that same computer. The dashboard shows incident totals and collector health. Browse all incidents with pagination, search and filter by state, then open one to inspect its affected files, related alerts, detection rationale, source events, and complete stored evidence. Acknowledge or resolve an incident from its detail view. It is bound to loopback by default. To run without the web UI:
 
 ```bash
 python -m rt_nid_ml.host.cli monitor

@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Host Security · RT-NID-ML</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #0b111a; color: #e9eef6; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .shell { max-width: 1550px; margin: auto; padding: 28px; }
+    .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 26px; }
+    .eyebrow { color: #6fcbce; font-size: 12px; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { font-size: clamp(27px, 3vw, 38px); margin: 6px 0 7px; letter-spacing: -.035em; }
+    h2 { font-size: 18px; margin: 0; }
+    h3 { font-size: 14px; margin: 0 0 9px; }
+    p { margin: 0; line-height: 1.5; }
+    .muted { color: #97a7ba; }
+    .small { font-size: 12px; }
+    .pill { border: 1px solid #315569; background: #122634; padding: 8px 12px; border-radius: 999px; white-space: nowrap; font-size: 12px; font-weight: 700; color: #99dfe2; }
+    .pill.bad { color: #ffb8ae; border-color: #714141; background: #301c23; }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin-bottom: 22px; }
+    .stat, .panel { background: #131d2a; border: 1px solid #26374a; box-shadow: 0 10px 35px #03070d32; border-radius: 14px; }
+    .stat { padding: 17px 20px; }
+    .stat span { color: #9cacc0; font-size: 12px; font-weight: 650; }
+    .stat strong { display: block; font-size: 30px; letter-spacing: -.04em; margin-top: 4px; }
+    .workspace { display: grid; grid-template-columns: minmax(350px, .95fr) minmax(450px, 1.35fr); gap: 17px; align-items: start; }
+    .panel { min-width: 0; overflow: hidden; }
+    .panel-head { padding: 20px 22px; border-bottom: 1px solid #26374a; }
+    .panel-head p { margin-top: 5px; }
+    .controls { display: flex; gap: 9px; padding: 15px 18px; border-bottom: 1px solid #26374a; }
+    input, select { color: #e9eef6; background: #0d1621; border: 1px solid #33465b; border-radius: 9px; padding: 10px 12px; outline: none; }
+    input:focus, select:focus, button:focus-visible { border-color: #65b9c7; outline: 2px solid #65b9c755; }
+    input { min-width: 0; flex: 1; }
+    .incident-list { max-height: 640px; overflow: auto; }
+    .incident { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1px solid #243448; color: inherit; padding: 16px 20px; }
+    .incident:hover, .incident.selected { background: #1b2b3b; }
+    .incident.selected { box-shadow: inset 3px 0 #68c5ce; }
+    .incident-top { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
+    .incident-title { font-weight: 720; line-height: 1.35; }
+    .incident-meta { display: flex; flex-wrap: wrap; gap: 8px 13px; margin-top: 8px; color: #a2b1c2; font-size: 12px; overflow-wrap: anywhere; }
+    .tag { display: inline-block; border-radius: 6px; padding: 4px 7px; background: #25384a; color: #d0e2ef; font-size: 11px; font-weight: 750; text-transform: uppercase; }
+    .tag.high, .tag.critical { background: #543037; color: #ffb4ab; }
+    .tag.medium { background: #4d402c; color: #ffd591; }
+    .tag.resolved { background: #1f423b; color: #9be8cb; }
+    .pagination { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 18px; }
+    .pagination button, .actions button { border: 1px solid #456075; color: #e3f5f6; background: #213749; border-radius: 8px; padding: 8px 12px; font-weight: 650; }
+    .pagination button:disabled, .actions button:disabled { opacity: .4; cursor: default; }
+    .detail { padding: 22px; max-height: 760px; overflow: auto; }
+    .detail-title { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+    .detail h2 { font-size: 23px; letter-spacing: -.025em; }
+    .detail > p { margin-bottom: 16px; }
+    .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 19px 0; }
+    .fact { background: #0e1722; border: 1px solid #28394c; border-radius: 9px; padding: 11px 13px; min-width: 0; }
+    .fact dt { color: #92a5b7; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 5px; }
+    .fact dd { margin: 0; overflow-wrap: anywhere; font-size: 13px; }
+    .section { margin-top: 24px; }
+    .section-title { color: #c6e6eb; padding-bottom: 9px; border-bottom: 1px solid #304355; margin-bottom: 12px; }
+    .asset { padding: 9px 11px; background: #0b2230; border: 1px solid #285567; border-radius: 8px; overflow-wrap: anywhere; margin: 7px 0; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+    .record { border: 1px solid #2b3d50; background: #101a27; border-radius: 10px; padding: 14px; margin: 9px 0; }
+    .record-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+    .record p { margin-top: 9px; font-size: 13px; }
+    .record .small { color: #97a7ba; }
+    pre { background: #0b131e; border: 1px solid #25374b; border-radius: 8px; padding: 12px; overflow: auto; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+    details { margin-top: 12px; }
+    summary { color: #99dfe2; cursor: pointer; font-size: 12px; font-weight: 700; }
+    .actions { display: flex; flex-wrap: wrap; gap: 9px; margin: 16px 0; }
+    .health { margin-top: 18px; padding: 16px 20px; }
+    .health-list { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 11px; }
+    .health-item { border: 1px solid #2d4656; border-radius: 8px; padding: 8px 10px; font-size: 12px; color: #b8d7de; }
+    .health-item.bad { border-color: #703c42; color: #ffb1a8; }
+    .empty { color: #9cacc0; padding: 35px 20px; text-align: center; }
+    .notice { margin: 0 0 15px; color: #ffbfaa; font-size: 13px; }
+    @media (max-width: 1000px) { .workspace { grid-template-columns: 1fr; } .incident-list, .detail { max-height: none; } }
+    @media (max-width: 650px) { .shell { padding: 16px; } .stats { grid-template-columns: repeat(2, 1fr); } .controls { flex-direction: column; } .facts { grid-template-columns: 1fr; } .top { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="top">
+      <div>
+        <div class="eyebrow">Local host detection</div>
+        <h1>Security incidents</h1>
+        <p class="muted" id="host-label">Loading host status…</p>
+      </div>
+      <span class="pill" id="health-pill">Connecting…</span>
+    </header>
+
+    <section class="stats" aria-label="Security overview">
+      <div class="stat"><span>Total incidents</span><strong id="total-incidents">0</strong></div>
+      <div class="stat"><span>Open incidents</span><strong id="open-incidents">0</strong></div>
+      <div class="stat"><span>High severity alerts</span><strong id="high-alerts">0</strong></div>
+      <div class="stat"><span>All alerts</span><strong id="total-alerts">0</strong></div>
+    </section>
+
+    <div class="workspace">
+      <section class="panel" aria-label="Incident browser">
+        <div class="panel-head"><h2>Incidents</h2><p class="muted small">Select an incident to inspect its full evidence.</p></div>
+        <div class="controls">
+          <input id="search" type="search" placeholder="Search host, rule, path, or source" aria-label="Search incidents">
+          <select id="state" aria-label="Filter incident state">
+            <option value="all">All states</option><option value="new">New</option>
+            <option value="updated">Updated</option><option value="acknowledged">Acknowledged</option>
+            <option value="resolved">Resolved</option>
+          </select>
+        </div>
+        <div class="incident-list" id="incident-list" aria-live="polite"></div>
+        <div class="pagination">
+          <button id="previous" type="button">Previous</button>
+          <span class="muted small" id="page-label">0 incidents</span>
+          <button id="next" type="button">Next</button>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="Incident details">
+        <div class="panel-head"><h2>Incident details</h2><p class="muted small">Alerts, affected assets, detections, and source events.</p></div>
+        <div class="detail" id="detail"><div class="empty">Select an incident on the left.</div></div>
+      </section>
+    </div>
+
+    <section class="panel health" aria-label="Collector health">
+      <h2>Collector health</h2>
+      <div class="health-list" id="collector-health"></div>
+    </section>
+  </main>
+
+  <script>
+    const state = { offset: 0, limit: 25, selectedId: null };
+    const $ = (selector) => document.querySelector(selector);
+    const node = (tag, className, value) => {
+      const element = document.createElement(tag);
+      if (className) element.className = className;
+      if (value !== undefined && value !== null) element.textContent = String(value);
+      return element;
+    };
+    const time = (value) => value ? new Date(value).toLocaleString() : '—';
+    const label = (value) => value === undefined || value === null || value === '' ? '—' : String(value);
+    const pretty = (value) => JSON.stringify(value || {}, null, 2);
+
+    async function getJSON(path) {
+      const response = await fetch(path);
+      if (!response.ok) throw new Error(`Request failed (${response.status})`);
+      return response.json();
+    }
+
+    function fact(name, value) {
+      const box = node('div', 'fact');
+      box.append(node('dt', '', name), node('dd', '', label(value)));
+      return box;
+    }
+
+    function evidence(data) {
+      const details = node('details');
+      details.append(node('summary', '', 'View complete evidence'), node('pre', '', pretty(data)));
+      return details;
+    }
+
+    function section(title, count) {
+      const wrapper = node('section', 'section');
+      wrapper.append(node('h3', 'section-title', `${title} (${count})`));
+      return wrapper;
+    }
+
+    function record(title, badge, description, timestamp, data) {
+      const box = node('article', 'record');
+      const head = node('div', 'record-head');
+      head.append(node('strong', '', title), node('span', 'tag', badge));
+      box.append(head, node('div', 'small', time(timestamp)));
+      if (description) box.append(node('p', '', description));
+      box.append(evidence(data));
+      return box;
+    }
+
+    async function refreshOverview() {
+      try {
+        const [status, counts] = await Promise.all([getJSON('/api/status'), getJSON('/api/overview')]);
+        $('#host-label').textContent = `${status.hostname || status.host_id} · ${status.platform.system || 'unknown'} ${status.platform.release || ''} · ${status.host_id}`;
+        $('#total-incidents').textContent = counts.incidents;
+        $('#open-incidents').textContent = counts.open_incidents;
+        $('#high-alerts').textContent = counts.high_alerts;
+        $('#total-alerts').textContent = counts.alerts;
+        const degraded = status.collectors.filter(item => !item.available);
+        const pill = $('#health-pill');
+        pill.textContent = degraded.length ? `${degraded.length} collector${degraded.length === 1 ? '' : 's'} degraded` : 'All collectors healthy';
+        pill.classList.toggle('bad', degraded.length > 0);
+        const health = $('#collector-health');
+        health.replaceChildren();
+        for (const item of status.collectors) {
+          const chip = node('div', `health-item${item.available ? '' : ' bad'}`,
+            `${item.collector_id}: ${item.available ? 'healthy' : 'degraded'}${item.last_error ? ' · ' + item.last_error : ''}`);
+          health.append(chip);
+        }
+        if (!status.collectors.length) health.append(node('span', 'muted small', 'No collectors enabled.'));
+      } catch (error) {
+        $('#health-pill').textContent = 'Connection unavailable';
+        $('#health-pill').classList.add('bad');
+      }
+    }
+
+    function renderIncident(item) {
+      const button = node('button', `incident${state.selectedId === item.incident_id ? ' selected' : ''}`);
+      button.type = 'button';
+      button.dataset.id = item.incident_id;
+      button.setAttribute('aria-label', `Open incident ${item.title || item.category || item.rule_id}`);
+      const top = node('div', 'incident-top');
+      top.append(node('span', 'incident-title', item.title || item.category || item.rule_id || 'Incident'));
+      top.append(node('span', `tag ${item.severity || item.state || ''}`, item.severity || item.state || 'new'));
+      const meta = node('div', 'incident-meta');
+      meta.append(node('span', '', item.subject || item.file_path || item.source_ip || item.host_id || 'Host event'));
+      meta.append(node('span', '', time(item.last_seen)));
+      meta.append(node('span', '', item.state || 'new'));
+      button.append(top, meta);
+      button.addEventListener('click', () => selectIncident(item.incident_id));
+      return button;
+    }
+
+    async function refreshIncidents() {
+      const params = new URLSearchParams({
+        limit: String(state.limit), offset: String(state.offset),
+        state: $('#state').value, q: $('#search').value.trim(),
+      });
+      try {
+        const page = await getJSON(`/api/incident-page?${params}`);
+        const list = $('#incident-list');
+        list.replaceChildren();
+        for (const item of page.items) list.append(renderIncident(item));
+        if (!page.items.length) list.append(node('div', 'empty', 'No incidents match this view.'));
+        const start = page.total ? page.offset + 1 : 0;
+        const end = Math.min(page.offset + page.items.length, page.total);
+        $('#page-label').textContent = `${start}–${end} of ${page.total}`;
+        $('#previous').disabled = state.offset === 0;
+        $('#next').disabled = state.offset + state.limit >= page.total;
+      } catch (error) {
+        $('#incident-list').replaceChildren(node('div', 'empty', 'Could not load incidents.'));
+      }
+    }
+
+    async function selectIncident(incidentId) {
+      state.selectedId = incidentId;
+      for (const button of document.querySelectorAll('.incident')) {
+        button.classList.toggle('selected', button.getAttribute('data-id') === incidentId);
+      }
+      const detail = $('#detail');
+      detail.replaceChildren(node('div', 'empty', 'Loading incident…'));
+      try {
+        const bundle = await getJSON(`/api/incidents/${encodeURIComponent(incidentId)}`);
+        if (state.selectedId !== incidentId) return;
+        renderDetail(bundle);
+      } catch (error) {
+        detail.replaceChildren(node('div', 'empty', 'Could not load this incident.'));
+      }
+    }
+
+    function renderDetail(bundle) {
+      const { incident, alerts, detections, events, affected_files: files } = bundle;
+      const detail = $('#detail');
+      detail.replaceChildren();
+      const title = node('div', 'detail-title');
+      title.append(node('h2', '', incident.title || alerts[0]?.title || incident.category || 'Incident'));
+      title.append(node('span', `tag ${incident.state || ''}`, incident.state || 'new'));
+      detail.append(title);
+      detail.append(node('p', 'muted', alerts[0]?.description || detections[0]?.reason || 'Local host detection.'));
+
+      const facts = node('dl', 'facts');
+      facts.append(
+        fact('Host', incident.host_id), fact('Severity', incident.severity || alerts[0]?.severity),
+        fact('Category', incident.category), fact('Rule', incident.rule_id),
+        fact('First seen', time(incident.first_seen)), fact('Last seen', time(incident.last_seen)),
+        fact('Source IP', incident.source_ip || alerts[0]?.source_ip),
+        fact('Subject', incident.subject || alerts[0]?.evidence?.username || alerts[0]?.evidence?.target_account),
+      );
+      detail.append(facts);
+
+      if (incident.state !== 'resolved') {
+        const actions = node('div', 'actions');
+        if (incident.state !== 'acknowledged') {
+          const acknowledge = node('button', '', 'Acknowledge');
+          acknowledge.addEventListener('click', () => changeState(incident.incident_id, 'acknowledge'));
+          actions.append(acknowledge);
+        }
+        const resolve = node('button', '', 'Resolve incident');
+        resolve.addEventListener('click', () => changeState(incident.incident_id, 'resolve'));
+        actions.append(resolve);
+        detail.append(actions);
+      }
+
+      const assets = section('Affected files', files.length);
+      if (files.length) files.forEach(path => assets.append(node('div', 'asset', path)));
+      else assets.append(node('p', 'muted small', 'No file path is associated with this incident.'));
+      detail.append(assets);
+
+      const alertSection = section('Related alerts', alerts.length);
+      for (const alert of alerts) alertSection.append(record(
+        alert.title || alert.rule_id, alert.status || alert.severity,
+        alert.description, alert.last_seen,
+        { alert_id: alert.alert_id, file_path: alert.file_path, source_ip: alert.source_ip,
+          confidence: alert.confidence, investigation: alert.investigation_recommendation,
+          evidence: alert.evidence, tactic: alert.tactic, technique_id: alert.technique_id },
+      ));
+      detail.append(alertSection);
+
+      const detectionSection = section('Detections and guidance', detections.length);
+      for (const detection of detections) detectionSection.append(record(
+        detection.rule_name || detection.rule_id, detection.severity,
+        `${detection.reason || ''} ${detection.investigation || ''}`.trim(), detection.timestamp,
+        { rule_id: detection.rule_id, category: detection.category,
+          confidence: detection.confidence, event_ids: detection.event_ids,
+          tactic: detection.tactic, technique_id: detection.technique_id,
+          evidence: detection.evidence },
+      ));
+      detail.append(detectionSection);
+
+      const eventSection = section('Source events', events.length);
+      for (const event of events) eventSection.append(record(
+        `${event.event_type || 'event'} · ${event.action || event.source || 'observed'}`,
+        event.outcome || 'observed',
+        [event.file_path, event.executable_path, event.username, event.source_ip].filter(Boolean).join(' · '),
+        event.timestamp, event,
+      ));
+      detail.append(eventSection);
+    }
+
+    async function changeState(incidentId, action) {
+      try {
+        const response = await fetch(`/api/incidents/${encodeURIComponent(incidentId)}/${action}`, { method: 'POST' });
+        if (!response.ok) throw new Error(`Request failed (${response.status})`);
+        await Promise.all([refreshOverview(), refreshIncidents()]);
+        await selectIncident(incidentId);
+      } catch (error) {
+        $('#detail').prepend(node('p', 'notice', 'Could not update this incident. Please try again.'));
+      }
+    }
+
+    $('#previous').addEventListener('click', () => { state.offset = Math.max(0, state.offset - state.limit); refreshIncidents(); });
+    $('#next').addEventListener('click', () => { state.offset += state.limit; refreshIncidents(); });
+    $('#state').addEventListener('change', () => { state.offset = 0; refreshIncidents(); });
+    let searchTimer;
+    $('#search').addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => { state.offset = 0; refreshIncidents(); }, 250);
+    });
+    refreshOverview();
+    refreshIncidents();
+    setInterval(() => { refreshOverview(); refreshIncidents(); }, 10000);
+  </script>
+</body>
+</html>
