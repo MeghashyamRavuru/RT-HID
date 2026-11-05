@@ -35,8 +35,11 @@ class HostAlertManager:
                 return None
             self._last_by_group[group] = now
             incident_id = self._incident_id(group)
-            existing = next((item for item in self.database.list_incidents(1000) if item["incident_id"] == incident_id), None)
+            existing = self.database.get_incident(incident_id)
             state = "updated" if existing else "new"
+            state_history = list(existing.get("state_history", [])) if existing else []
+            if existing and existing.get("state") != state:
+                state_history.append(existing["state"])
             alert = {
                 "alert_id": uuid.uuid4().hex,
                 "incident_id": incident_id,
@@ -59,6 +62,7 @@ class HostAlertManager:
                 "investigation_recommendation": detection.investigation,
                 "status": "new",
                 "state": state,
+                "state_history": state_history[-20:],
                 "tactic": detection.tactic,
                 "technique_id": detection.technique_id,
             }

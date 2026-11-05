@@ -357,8 +357,8 @@
       });
       detail.append(exportButton);
 
+      const actions = node('div', 'actions');
       if (incident.state !== 'resolved') {
-        const actions = node('div', 'actions');
         if (incident.state !== 'acknowledged') {
           const acknowledge = node('button', '', 'Acknowledge');
           acknowledge.addEventListener('click', () => changeState(incident.incident_id, 'acknowledge'));
@@ -367,8 +367,13 @@
         const resolve = node('button', '', 'Resolve incident');
         resolve.addEventListener('click', () => changeState(incident.incident_id, 'resolve'));
         actions.append(resolve);
-        detail.append(actions);
       }
+      if ((incident.state_history || []).length) {
+        const undo = node('button', 'quiet-button', 'Undo last status change');
+        undo.addEventListener('click', () => changeState(incident.incident_id, 'undo-state'));
+        actions.append(undo);
+      }
+      if (actions.children.length) detail.append(actions);
 
       const assets = section('Affected files', files.length);
       if (files.length) files.forEach(path => assets.append(node('div', 'asset', path)));
@@ -418,6 +423,18 @@
             }
           });
           alertCard.append(falsePositive);
+        } else {
+          const undo = node('button', 'quiet-button', 'Undo false positive');
+          undo.type = 'button';
+          undo.addEventListener('click', async () => {
+            try {
+              await postJSON(`/api/alerts/${encodeURIComponent(alert.alert_id)}/undo-false-positive`);
+              await Promise.all([refreshOverview(), selectIncident(incident.incident_id)]);
+            } catch (error) {
+              alertCard.prepend(node('p', 'notice', 'Could not restore this alert.'));
+            }
+          });
+          alertCard.append(undo);
         }
         alertSection.append(alertCard);
       }

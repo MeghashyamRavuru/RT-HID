@@ -134,8 +134,31 @@ class HostDatabase:
             if row is None:
                 raise KeyError(alert_id)
             payload = json.loads(row["payload"])
+            if payload.get("status", "new") == status:
+                return
+            history = payload.get("status_history", [])
+            history.append(payload.get("status", "new"))
+            payload["status_history"] = history[-20:]
             payload["status"] = status
             self.connection.execute("UPDATE alerts SET status = ?, payload = ? WHERE alert_id = ?", (status, json.dumps(payload), alert_id))
+
+    def undo_alert_status(self, alert_id: str) -> str:
+        with self._lock, self.connection:
+            row = self.connection.execute("SELECT payload FROM alerts WHERE alert_id = ?", (alert_id,)).fetchone()
+            if row is None:
+                raise KeyError(alert_id)
+            payload = json.loads(row["payload"])
+            if payload.get("status") != "false_positive":
+                raise ValueError("alert is not marked false positive")
+            history = payload.get("status_history", [])
+            previous = history.pop() if history else "new"  # legacy false positives had no history
+            payload["status_history"] = history
+            payload["status"] = previous
+            self.connection.execute(
+                "UPDATE alerts SET status = ?, payload = ? WHERE alert_id = ?",
+                (previous, json.dumps(payload), alert_id),
+            )
+            return previous
 
     def set_incident_state(self, incident_id: str, state: str) -> None:
         with self._lock, self.connection:
@@ -143,8 +166,31 @@ class HostDatabase:
             if row is None:
                 raise KeyError(incident_id)
             payload = json.loads(row["payload"])
+            if payload["state"] == state:
+                return
+            history = payload.get("state_history", [])
+            history.append(payload["state"])
+            payload["state_history"] = history[-20:]
             payload["state"] = state
             self.connection.execute("UPDATE incidents SET state = ?, payload = ? WHERE incident_id = ?", (state, json.dumps(payload), incident_id))
+
+    def undo_incident_state(self, incident_id: str) -> str:
+        with self._lock, self.connection:
+            row = self.connection.execute("SELECT payload FROM incidents WHERE incident_id = ?", (incident_id,)).fetchone()
+            if row is None:
+                raise KeyError(incident_id)
+            payload = json.loads(row["payload"])
+            history = payload.get("state_history", [])
+            if not history:
+                raise ValueError("incident has no state change to undo")
+            previous = history.pop()
+            payload["state_history"] = history
+            payload["state"] = previous
+            self.connection.execute(
+                "UPDATE incidents SET state = ?, payload = ? WHERE incident_id = ?",
+                (previous, json.dumps(payload), incident_id),
+            )
+            return previous
 
     def set_checkpoint(self, checkpoint_id: str, value: str) -> None:
         with self._lock, self.connection:

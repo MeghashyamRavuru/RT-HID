@@ -183,6 +183,16 @@ def create_app(agent: HostAgent) -> Flask:
             abort(404, "incident not found")
         return jsonify({"status": "resolved", "incident_id": incident_id})
 
+    @app.post("/api/incidents/<incident_id>/undo-state")
+    def undo_incident_state(incident_id: str):
+        try:
+            restored = agent.database.undo_incident_state(incident_id)
+        except KeyError:
+            abort(404, "incident not found")
+        except ValueError as error:
+            abort(409, str(error))
+        return jsonify({"status": restored, "incident_id": incident_id})
+
     @app.post("/api/alerts/<alert_id>/false-positive")
     def false_positive(alert_id: str):
         try:
@@ -190,5 +200,15 @@ def create_app(agent: HostAgent) -> Flask:
         except KeyError:
             abort(404, "alert not found")
         return jsonify({"status": "false_positive", "alert_id": alert_id})
+
+    @app.post("/api/alerts/<alert_id>/undo-false-positive")
+    def undo_false_positive(alert_id: str):
+        try:
+            restored = agent.database.undo_alert_status(alert_id)
+        except KeyError:
+            abort(404, "alert not found")
+        except ValueError as error:
+            abort(409, str(error))
+        return jsonify({"status": restored, "alert_id": alert_id})
 
     return app

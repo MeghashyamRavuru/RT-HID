@@ -61,6 +61,28 @@ class HostHidsTests(unittest.TestCase):
             self.assertEqual(reopened.get_checkpoint("cursor"), "12")
             reopened.close()
 
+    def test_undo_survives_database_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "host.sqlite3"
+            database = HostDatabase(path)
+            database.save_incident({"incident_id": "incident-1", "state": "new",
+                                    "first_seen": "2026-01-01T00:00:00+00:00",
+                                    "last_seen": "2026-01-01T00:00:00+00:00"})
+            database.save_alert({"alert_id": "alert-1", "incident_id": "incident-1",
+                                 "first_seen": "2026-01-01T00:00:00+00:00",
+                                 "last_seen": "2026-01-01T00:00:00+00:00",
+                                 "severity": "medium", "status": "new"})
+            database.set_incident_state("incident-1", "resolved")
+            database.set_alert_status("alert-1", "false_positive")
+            database.close()
+            reopened = HostDatabase(path)
+            try:
+                self.assertEqual(reopened.undo_incident_state("incident-1"), "new")
+                self.assertEqual(reopened.undo_alert_status("alert-1"), "new")
+                self.assertEqual(reopened.get_incident("incident-1")["state"], "new")
+            finally:
+                reopened.close()
+
     def test_file_integrity_baseline_then_change(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "sensitive.conf"
@@ -207,8 +229,17 @@ class HostHidsTests(unittest.TestCase):
                 self.assertEqual(client.post(f"/api/alerts/{alert_id}/false-positive", headers=headers).status_code, 200)
                 self.assertEqual(client.get(f"/api/incidents/{incident_id}").get_json()["alerts"][0]["status"],
                                  "false_positive")
+                self.assertEqual(client.post(f"/api/alerts/{alert_id}/undo-false-positive").status_code, 403)
+                self.assertEqual(client.post(f"/api/alerts/{alert_id}/undo-false-positive", headers=headers).status_code, 200)
+                self.assertEqual(client.get(f"/api/incidents/{incident_id}").get_json()["alerts"][0]["status"], "new")
+                self.assertEqual(client.post(f"/api/alerts/{alert_id}/undo-false-positive", headers=headers).status_code, 409)
                 self.assertEqual(client.post(f"/api/incidents/{incident_id}/resolve", headers=headers).status_code, 200)
                 self.assertEqual(client.get("/api/incidents/" + incident_id).get_json()["incident"]["state"], "resolved")
+                self.assertEqual(client.post(f"/api/incidents/{incident_id}/undo-state", headers=headers).get_json()["status"],
+                                 "acknowledged")
+                self.assertEqual(client.post(f"/api/incidents/{incident_id}/undo-state", headers=headers).get_json()["status"],
+                                 "new")
+                self.assertEqual(client.post(f"/api/incidents/{incident_id}/undo-state", headers=headers).status_code, 409)
                 self.assertEqual(client.get("/api/incidents/missing").status_code, 404)
                 self.assertIn(b"Incident details", client.get("/").data)
                 agent.database.set_admin_password("another-local-admin-password")

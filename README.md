@@ -56,7 +56,7 @@ Open `http://127.0.0.1:5000` on that same computer and sign in. The dashboard an
 
 HTTP API clients must keep the login session cookie and send the `csrf_token` from `GET /api/session` as the `X-CSRF-Token` header on POST requests. The password setup command uses the same database as the dashboard; pass the same `--config` option to both commands when using a custom configuration.
 
-The dashboard shows incident totals, seven-day activity, alert severity, and collector health. Browse all incidents with pagination, search and filter by state, then open one to inspect affected files, related alerts, detection rationale, source events, and complete stored evidence. Add investigation notes, export an incident as JSON, mark an alert as a false positive, or acknowledge and resolve an incident from the detail view. To run without the web UI:
+The dashboard shows incident totals, seven-day activity, alert severity, and collector health. Browse all incidents with pagination, search and filter by state, then open one to inspect affected files, related alerts, detection rationale, source events, and complete stored evidence. Add investigation notes, export an incident as JSON, mark an alert as a false positive, or acknowledge and resolve an incident from the detail view. Undo controls restore the previous incident state or reverse a false-positive mark, including after a dashboard restart. To run without the web UI:
 
 ```bash
 python -m rt_nid_ml.host.cli monitor
