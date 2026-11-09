@@ -4,6 +4,9 @@ import hashlib
 import platform
 import re
 import stat
+from collections import OrderedDict
+from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -74,45 +77,176 @@ class LinuxAuthCollector(Collector):
 class LinuxProcessCollector(Collector):
     collector_id = "linux_process"
 
-    def __init__(self, host_id: str, sink: EventSink) -> None:
+    def __init__(self, host_id: str, sink: EventSink, config: HostConfig | None = None) -> None:
         super().__init__(host_id, sink)
         self.status = CollectorStatus(self.collector_id, "linux", False, True)
-        self._known: dict[int, float] = {}
+        self.config = config or HostConfig(host_id=host_id)
+        self._known: dict[tuple[int, float], dict[str, Any]] = {}
+        self._hash_cache: OrderedDict[tuple[str, int, int], str] = OrderedDict()
         self._initialized = False
 
     def collect_once(self) -> list[HostEvent]:
         import psutil
 
-        current: dict[int, float] = {}
+        current: dict[tuple[int, float], dict[str, Any]] = {}
         events: list[HostEvent] = []
+        inspected = identified = inaccessible = errors = 0
+        error_summary: str | None = None
+        hashes_remaining = self.config.process_hashes_per_scan
         for process in psutil.process_iter(["pid", "ppid", "name", "exe", "username", "create_time"]):
+            inspected += 1
+            identity: tuple[int, float] | None = None
             try:
+                inaccessible_process = False
                 info = process.info
                 pid = int(info["pid"])
-                created = float(info.get("create_time") or 0.0)
-                current[pid] = created
-                if self._initialized and self._known.get(pid) != created:
-                    events.append(HostEvent.create(
-                        self.host_id,
-                        "process_start",
-                        "psutil",
-                        process_id=pid,
-                        parent_process_id=info.get("ppid"),
-                        process_name=info.get("name"),
-                        executable_path=info.get("exe"),
-                        username=info.get("username"),
-                        action="start",
-                        outcome="observed",
-                        evidence={"create_time": created},
-                    ))
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError):
+                created_value = info.get("create_time")
+                if created_value is None:
+                    created_value = process.create_time()
+                created = float(created_value)
+                if created <= 0:
+                    raise ValueError("missing process creation time")
+                identified += 1
+                identity = (pid, created)
+                if identity in current:
+                    continue
+                current[identity] = {"created_at": None}
+                if not self._initialized or identity in self._known:
+                    if identity in self._known:
+                        current[identity] = self._known[identity]
+                    continue
+
+                ppid = info.get("ppid")
+                parent_name = None
+                if ppid is not None:
+                    try:
+                        parent_name = psutil.Process(int(ppid)).name()
+                    except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess, OSError, ValueError):
+                        pass
+                command_line = None
+                cwd = None
+                try:
+                    command_line = _redact_command_line(process.cmdline(), self.config.process_command_line_max_length)
+                except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess, OSError):
+                    inaccessible_process = True
+                try:
+                    cwd = process.cwd()
+                except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess, OSError):
+                    inaccessible_process = True
+                if inaccessible_process:
+                    inaccessible += 1
+
+                executable = info.get("exe")
+                digest = None
+                hash_error = None
+                if executable and self.config.executable_hashing_enabled:
+                    digest, hash_error, used_budget = self._hash_executable(str(executable), hashes_remaining)
+                    hashes_remaining -= used_budget
+                    if hash_error and hash_error != "scan budget reached":
+                        errors += 1
+                        error_summary = f"executable hash: {hash_error}"
+                try:
+                    created_at = datetime.fromtimestamp(created, timezone.utc).isoformat()
+                except (OverflowError, ValueError, OSError):
+                    created_at = None
+                metadata = {"create_time": created,
+                            "created_at": created_at,
+                            "parent_name": parent_name, "command_line": command_line,
+                            "working_directory": cwd, "executable_sha256": digest,
+                            "executable_hash_error": hash_error}
+                current[identity] = {"created_at": created_at}
+                events.append(HostEvent.create(
+                    self.host_id, "process_start", "psutil", process_id=pid,
+                    parent_process_id=ppid, process_name=info.get("name"),
+                    executable_path=executable, username=info.get("username"),
+                    action="start", outcome="observed", metadata=metadata,
+                    evidence={"create_time": created},
+                ))
+            except Exception as exc:  # isolate unexpected per-process failures as well
+                inaccessible += 1
+                errors += 1
+                error_summary = f"process inspection: {type(exc).__name__}"
+                if identity is not None and identity not in self._known:
+                    current.pop(identity, None)
+                # Preserve known instances if this PID cannot be inspected this scan.
+                pid = getattr(process, "pid", None)
+                for identity, metadata in self._known.items():
+                    if identity[0] == pid:
+                        current[identity] = metadata
                 continue
         if self._initialized:
-            for pid in set(self._known) - set(current):
-                events.append(HostEvent.create(self.host_id, "process_stop", "psutil", process_id=pid, action="stop", outcome="observed"))
+            for (pid, created), metadata in self._known.items():
+                if (pid, created) not in current:
+                    events.append(HostEvent.create(self.host_id, "process_stop", "psutil",
+                                                   process_id=pid, action="stop", outcome="observed",
+                                                   metadata={"create_time": created,
+                                                             "created_at": metadata.get("created_at")}))
         self._known = current
         self._initialized = True
+        functional = not inspected or identified > 0
+        self.status = replace(self.status, available=functional, processes_inspected=inspected,
+                              inaccessible_processes=inaccessible, collection_errors=errors,
+                              last_error=error_summary,
+                              detail=f"{inspected} inspected, {inaccessible} inaccessible, {len(events)} events")
         return events
+
+    def _hash_executable(self, executable: str, remaining: int) -> tuple[str | None, str | None, int]:
+        path = Path(executable)
+        try:
+            before = path.stat()
+            if not path.is_file():
+                return None, "not a regular file", 0
+            if before.st_size > self.config.executable_hash_max_bytes:
+                return None, "file exceeds size limit", 0
+            key = (str(path), before.st_size, before.st_mtime_ns)
+            if key in self._hash_cache:
+                self._hash_cache.move_to_end(key)
+                return self._hash_cache[key], None, 0
+            if remaining <= 0:
+                return None, "scan budget reached", 0
+            digest = hashlib.sha256()
+            bytes_read = 0
+            with path.open("rb") as source:
+                while chunk := source.read(1024 * 1024):
+                    bytes_read += len(chunk)
+                    if bytes_read > self.config.executable_hash_max_bytes:
+                        return None, "file exceeds size limit", 1
+                    digest.update(chunk)
+            after = path.stat()
+            if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+                return None, "file changed during hashing", 1
+            result = digest.hexdigest()
+            self._hash_cache[key] = result
+            if len(self._hash_cache) > 256:
+                self._hash_cache.popitem(last=False)
+            return result, None, 1
+        except (OSError, ValueError) as exc:
+            return None, type(exc).__name__, 1
+
+
+_SECRET_ARGUMENT = re.compile(r"(?i)(?<![\w])(password|passwd|token|api[_-]?key|secret|client[_-]?secret|access[_-]?key)([=:])[^\s]+")
+_SECRET_FLAG = re.compile(r"(?i)^-{1,2}(password|passwd|token|api[_-]?key|secret|client[_-]?secret|access[_-]?key)$")
+
+
+def _redact_command_line(arguments: list[str] | None, max_length: int) -> list[str] | None:
+    if arguments is None:
+        return None
+    result: list[str] = []
+    length = 0
+    hide_next = False
+    for argument in arguments:
+        raw = str(argument)
+        raw_truncated = len(raw) > max_length
+        limited = raw[:max_length]
+        value = "<redacted>" if hide_next else _SECRET_ARGUMENT.sub(r"\1\2<redacted>", limited)
+        hide_next = bool(_SECRET_FLAG.match(limited))
+        if raw_truncated or length + len(value) > max_length:
+            if length + len("<truncated>") <= max_length:
+                result.append("<truncated>")
+            break
+        result.append(value)
+        length += len(value)
+    return result
 
 
 class LinuxNetworkCollector(Collector):

@@ -5,6 +5,7 @@ import platform
 import signal
 import threading
 import time
+from dataclasses import replace
 from typing import Any
 
 from .alerts.manager import HostAlertManager
@@ -36,7 +37,7 @@ class HostAgent:
         if self.capabilities.system == "linux":
             candidates: list[Collector] = [
                 LinuxAuthCollector(self.config.host_id, self.config, self.database, sink),
-                LinuxProcessCollector(self.config.host_id, sink),
+                LinuxProcessCollector(self.config.host_id, sink, self.config),
                 LinuxNetworkCollector(self.config.host_id, sink),
                 LinuxFileIntegrityCollector(self.config.host_id, self.config, self.database, sink),
                 LinuxSystemCollector(self.config.host_id, sink),
@@ -44,7 +45,7 @@ class HostAgent:
         elif self.capabilities.system == "windows":
             candidates = [
                 WindowsEventLogCollector(self.config.host_id, self.database, sink),
-                WindowsProcessCollector(self.config.host_id, sink),
+                WindowsProcessCollector(self.config.host_id, sink, self.config),
                 WindowsNetworkCollector(self.config.host_id, sink),
                 WindowsFileIntegrityCollector(self.config.host_id, self.config, self.database, sink),
                 WindowsSystemCollector(self.config.host_id, sink),
@@ -90,6 +91,9 @@ class HostAgent:
     def stop(self) -> None:
         self.stop_event.set()
         self.alerts.shutdown()
+        for collector in self.collectors:
+            collector.status = replace(collector.status, state="stopped", detail="stopped")
+            self.database.save_collector_status(collector.status)
         self.database.close()
 
     def status(self) -> dict[str, Any]:

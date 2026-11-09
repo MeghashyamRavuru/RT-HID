@@ -15,6 +15,18 @@ RT-HID runs on an individual Ubuntu/Linux or Windows computer. It collects local
 
 Rules alert on repeated authentication failures, a successful login after failures, execution from temporary directories, new listeners, monitored file changes, and the listed Windows security changes. These are indicators for investigation, not proof of compromise. The initial process, listener, file, and Windows Security log scans establish a baseline and do not raise retroactive alerts.
 
+## Process telemetry
+
+Each process scan uses PID and creation time together to distinguish process instances, including PID reuse. The first scan establishes a baseline. Later scans emit start events for new instances and stop events for instances that disappear; an inaccessible process is retained for that scan so a permission error does not appear as a stop. Polling can miss processes that start and end between scans.
+
+Start events include PID, name, parent PID and name, executable path, user, creation time, working directory, and a redacted command line when those fields are available. Unavailable fields are `null`. The incident detail view shows key process fields and the complete stored event evidence. Protected Windows processes, Linux `/proc` permissions, and processes that exit during inspection can leave fields unavailable. Collector health shows running state, last successful scan, duration, process counts, event counts, inaccessible counts, errors, and a sanitized error summary.
+
+SHA-256 collection is enabled by default for newly observed accessible regular executables up to 16 MiB. The collector hashes at most two uncached executables per scan and caches 256 unchanged file signatures. It reads files only; it never executes them. Size, permission, deleted-file, and scan-budget failures leave the hash unavailable and are recorded with a short reason. A regular file on a slow or remote filesystem may still delay a scan; the size and per-scan limits bound the usual work, but do not impose a wall-clock timeout.
+
+Command-line arguments are capped at 2,048 stored characters and obvious password, token, API-key, and secret flags are redacted. This is best-effort redaction: custom argument names, embedded secrets, and secrets in paths may remain visible. Do not grant dashboard access to users who should not see local process metadata. Environment variables and file contents are not collected.
+
+The sample configuration in `config/host_ids.json` shows `process_interval_seconds`, `executable_hashing_enabled`, `process_command_line_max_length`, `executable_hash_max_bytes`, and `process_hashes_per_scan`. Existing configuration files can omit the new options and use these defaults. Set `executable_hashing_enabled` to `false` to skip executable hashing.
+
 ## Install
 
 Use Python 3.10 or newer. From the repository root:

@@ -260,8 +260,13 @@
         const health = $('#collector-health');
         health.replaceChildren();
         for (const item of status.collectors) {
-          const chip = node('div', `health-item${item.available ? '' : ' bad'}`,
-            `${item.collector_id}: ${item.available ? 'healthy' : 'degraded'}${item.last_error ? ' · ' + item.last_error : ''}`);
+          const chip = node('div', `health-item${item.available ? '' : ' bad'}`);
+          const summary = `${item.collector_id}: ${item.state || (item.available ? 'running' : 'degraded')}`;
+          const metrics = item.collector_id.endsWith('_process')
+            ? ` · ${item.processes_inspected ?? 0} inspected · ${item.events_generated ?? 0} events · ${item.inaccessible_processes ?? 0} inaccessible · ${item.collection_errors ?? 0} errors`
+            : '';
+          const timing = item.last_duration_seconds == null ? '' : ` · ${item.last_duration_seconds.toFixed(3)}s`;
+          chip.textContent = `${summary}${metrics}${timing}${item.last_success ? ' · last success ' + time(item.last_success) : ''}${item.last_error ? ' · ' + item.last_error : ''}`;
           health.append(chip);
         }
         if (!status.collectors.length) health.append(node('span', 'muted small', 'No collectors enabled.'));
@@ -452,12 +457,25 @@
       detail.append(detectionSection);
 
       const eventSection = section('Source events', events.length);
-      for (const event of events) eventSection.append(record(
-        `${event.event_type || 'event'} · ${event.action || event.source || 'observed'}`,
-        event.outcome || 'observed',
-        [event.file_path, event.executable_path, event.username, event.source_ip].filter(Boolean).join(' · '),
-        event.timestamp, event,
-      ));
+      for (const event of events) {
+        const entry = record(
+          `${event.event_type || 'event'} · ${event.action || event.source || 'observed'}`,
+          event.outcome || 'observed',
+          [event.file_path, event.executable_path, event.username, event.source_ip].filter(Boolean).join(' · '),
+          event.timestamp, event,
+        );
+        if (event.event_type === 'process_start') {
+          const processFacts = node('dl', 'facts');
+          processFacts.append(
+            fact('Process', event.process_name), fact('PID', event.process_id),
+            fact('Parent PID', event.parent_process_id), fact('Parent', event.metadata?.parent_name),
+            fact('Executable', event.executable_path), fact('User', event.username),
+            fact('Created', event.metadata?.created_at), fact('SHA-256', event.metadata?.executable_sha256),
+          );
+          entry.append(processFacts);
+        }
+        eventSection.append(entry);
+      }
       detail.append(eventSection);
     }
 

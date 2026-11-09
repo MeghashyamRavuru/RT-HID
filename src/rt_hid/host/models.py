@@ -96,6 +96,12 @@ class CollectorStatus:
     last_success: str | None = None
     last_error: str | None = None
     detail: str = ""
+    state: str = "stopped"
+    last_duration_seconds: float | None = None
+    processes_inspected: int = 0
+    events_generated: int = 0
+    inaccessible_processes: int = 0
+    collection_errors: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

@@ -23,6 +23,10 @@ class HostConfig:
     auth_log_paths: list[Path] = field(default_factory=lambda: [Path("/var/log/auth.log"), Path("/var/log/secure")])
     monitored_paths: list[Path] = field(default_factory=default_monitored_paths)
     process_interval_seconds: float = 10.0
+    executable_hashing_enabled: bool = True
+    process_command_line_max_length: int = 2048
+    executable_hash_max_bytes: int = 16 * 1024 * 1024
+    process_hashes_per_scan: int = 2
     network_interval_seconds: float = 15.0
     system_interval_seconds: float = 30.0
     auth_interval_seconds: float = 2.0
@@ -67,3 +71,11 @@ class HostConfig:
             raise ValueError("invalid authentication failure rule configuration")
         if self.retention_days < 1:
             raise ValueError("retention_days must be positive")
+        if not isinstance(self.executable_hashing_enabled, bool):
+            raise ValueError("executable_hashing_enabled must be a boolean")
+        if not 128 <= self.process_command_line_max_length <= 16384:
+            raise ValueError("process_command_line_max_length must be between 128 and 16384")
+        if not 0 <= self.executable_hash_max_bytes <= 64 * 1024 * 1024:
+            raise ValueError("executable_hash_max_bytes must be between 0 and 64 MiB")
+        if not 0 <= self.process_hashes_per_scan <= 8:
+            raise ValueError("process_hashes_per_scan must be between 0 and 8")

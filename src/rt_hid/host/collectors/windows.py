@@ -129,8 +129,8 @@ class WindowsEventLogCollector(Collector):
 class WindowsProcessCollector(LinuxProcessCollector):
     collector_id = "windows_process"
 
-    def __init__(self, host_id: str, sink: EventSink) -> None:
-        super().__init__(host_id, sink)
+    def __init__(self, host_id: str, sink: EventSink, config: HostConfig | None = None) -> None:
+        super().__init__(host_id, sink, config)
         self.status = CollectorStatus(self.collector_id, "windows", False, True)
 
 
