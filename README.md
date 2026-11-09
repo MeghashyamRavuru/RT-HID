@@ -1,6 +1,6 @@
 # RT-HID: local host intrusion detection
 
-RT-HID runs on an individual Ubuntu/Linux or Windows computer. It collects local security signals, applies explainable detection rules, stores evidence and incidents in a local SQLite database, and shows alerts on a dashboard bound to `127.0.0.1`. It does not require a central server or send events elsewhere. The current detector does not use machine learning.
+RT-HID runs on an individual Ubuntu/Linux or Windows computer. It collects local security signals, applies explainable detection rules, stores evidence and incidents in a local SQLite database, and shows alerts on a dashboard bound to `127.0.0.1:5000`. It does not require a central server or send events elsewhere. The current detector does not use machine learning.
 
 ## What it monitors
 
@@ -13,7 +13,7 @@ RT-HID runs on an individual Ubuntu/Linux or Windows computer. It collects local
 | Security changes | File modifications and permissions | Audit log clearing, account creation, service installation |
 | System health | CPU, memory, boot snapshot | CPU, memory, boot snapshot |
 
-Rules alert on repeated authentication failures, a successful login after failures, execution from temporary directories, new listeners, monitored file changes, and the listed Windows security changes. These are indicators for investigation, not proof of compromise. The initial process, listener, file, and Windows Security log scans establish a baseline and do not raise retroactive alerts.
+Rules alert on repeated authentication failures, a successful login after failures, execution from temporary directories, encoded PowerShell commands, new listeners, monitored file changes, and the listed Windows security changes. The encoded PowerShell rule is high severity when a statically decoded command contains TCP client and command execution patterns; other encoded commands are medium severity because legitimate administration can use them. The decoded command is never executed or copied into alert evidence. These are indicators for investigation, not proof of compromise. The initial process, listener, file, and Windows Security log scans establish a baseline and do not raise retroactive alerts. Previously stored process events are not automatically reanalyzed when rules change.
 
 ## Process telemetry
 
@@ -40,6 +40,7 @@ On Ubuntu/Linux:
 ```bash
 . .venv/bin/activate
 pip install -e .
+PYTHONPATH=src
 ```
 
 On Windows PowerShell:

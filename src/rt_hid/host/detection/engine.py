@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import binascii
+import re
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
@@ -110,23 +113,47 @@ class HostDetectionEngine:
         path = (event.executable_path or "").lower().replace("\\", "/")
         parent = (event.metadata.get("parent_name") or "").lower()
         temporary = path.startswith(("/tmp/", "/var/tmp/", "/dev/shm/")) or "/appdata/local/temp/" in path or path.startswith("c:/windows/temp/")
-        if not temporary:
-            return []
-        return [Detection.create(
-            rule_id="HIDS-EXEC-001",
-            rule_name="Executable launched from temporary directory",
-            category="suspicious_execution",
-            tactic="Execution",
-            technique_id="T1204",
-            severity="medium",
-            confidence=0.6,
-            timestamp=event.timestamp,
-            event_ids=(event.event_id,),
-            reason="A process started from a temporary executable path",
-            evidence={"executable_path": event.executable_path, "parent": parent, "pid": event.process_id},
-            investigation="Verify the executable origin, package ownership, and parent process chain.",
-            host_id=event.host_id,
-        )]
+        detections: list[Detection] = []
+        if temporary:
+            detections.append(Detection.create(
+                rule_id="HIDS-EXEC-001",
+                rule_name="Executable launched from temporary directory",
+                category="suspicious_execution",
+                tactic="Execution",
+                technique_id="T1204",
+                severity="medium",
+                confidence=0.6,
+                timestamp=event.timestamp,
+                event_ids=(event.event_id,),
+                reason="A process started from a temporary executable path",
+                evidence={"executable_path": event.executable_path, "parent": parent, "pid": event.process_id},
+                investigation="Verify the executable origin, package ownership, and parent process chain.",
+                host_id=event.host_id,
+            ))
+        encoded = _encoded_powershell_command(event)
+        if encoded is not None:
+            network_execution = _network_command_execution(encoded)
+            detections.append(Detection.create(
+                rule_id="HIDS-EXEC-002",
+                rule_name="Encoded PowerShell command with network execution" if network_execution
+                          else "Encoded PowerShell command",
+                category="suspicious_execution",
+                tactic="Execution",
+                technique_id="T1059.001",
+                severity="high" if network_execution else "medium",
+                confidence=0.9 if network_execution else 0.6,
+                timestamp=event.timestamp,
+                event_ids=(event.event_id,),
+                reason="Encoded PowerShell command contains network and command execution patterns" if network_execution
+                       else "PowerShell started with an encoded command argument",
+                evidence={"process_name": event.process_name, "pid": event.process_id,
+                          "process_identity": f"{event.process_id}:{event.metadata.get('create_time') or event.event_id}",
+                          "executable_path": event.executable_path, "network_execution_pattern": network_execution},
+                investigation="Confirm who launched PowerShell, inspect the parent process and command, "
+                              "and verify any network destination. Encoded commands can also be used for administration.",
+                host_id=event.host_id,
+            ))
+        return detections
 
     def _file_rules(self, event: HostEvent) -> list[Detection]:
         if event.action not in {"modify", "delete", "create", "permission_change"}:
@@ -170,3 +197,33 @@ class HostDetectionEngine:
 def _parse_timestamp(value: str) -> datetime:
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _encoded_powershell_command(event: HostEvent) -> str | None:
+    name = (event.executable_path or event.process_name or "").lower().replace("\\", "/").rsplit("/", 1)[-1]
+    if name not in {"powershell.exe", "pwsh.exe", "powershell", "pwsh"}:
+        return None
+    arguments = event.metadata.get("command_line")
+    if not isinstance(arguments, list):
+        return None
+    for index, argument in enumerate(arguments[:32]):
+        if not isinstance(argument, str):
+            continue
+        option, separator, _ = argument.lower().partition(":")
+        if option not in {"-encodedcommand", "-enc", "-ec", "-e"}:
+            continue
+        encoded = argument.split(":", 1)[1] if separator else arguments[index + 1] if index + 1 < len(arguments) else ""
+        if not isinstance(encoded, str) or not 1 <= len(encoded) <= 8192:
+            return ""
+        try:
+            return base64.b64decode(encoded, validate=True).decode("utf-16-le")
+        except (binascii.Error, UnicodeError, ValueError):
+            return ""
+    return None
+
+
+def _network_command_execution(command: str) -> bool:
+    normalized = re.sub(r"\s+", "", command).lower()
+    network = "system.net.sockets.tcpclient" in normalized or "net.sockets.tcpclient" in normalized
+    execution = bool(re.search(r"(?<![\w-])(?:iex|invoke-expression)(?![\w-])", command, re.IGNORECASE))
+    return network and execution
