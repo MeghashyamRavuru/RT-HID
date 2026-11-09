@@ -21,7 +21,11 @@ class HostConfig:
     database_path: Path = Path("data/host_ids.sqlite3")
     dashboard_host: str = "127.0.0.1"
     dashboard_port: int = 5000
-    auth_log_paths: list[Path] = field(default_factory=lambda: [Path("/var/log/auth.log"), Path("/var/log/secure")])
+    auth_log_paths: list[Path] = field(default_factory=lambda: [Path("/var/log/auth.log"), Path("/var/log/secure"),
+                                                               Path("/var/log/vsftpd.log"),
+                                                               Path("/var/log/proftpd/proftpd.log")])
+    windows_ftp_log_paths: list[Path] = field(default_factory=lambda: [
+        Path(os.environ.get("SystemDrive", "C:") + r"\inetpub\logs\LogFiles")])
     monitored_paths: list[Path] = field(default_factory=default_monitored_paths)
     process_interval_seconds: float = 10.0
     executable_hashing_enabled: bool = True
@@ -59,12 +63,12 @@ class HostConfig:
     response_enabled: bool = False
     retention_enabled: bool = False
     maintenance_interval_seconds: float = 86400.0
-    enabled_collectors: set[str] = field(default_factory=lambda: {"auth", "process", "network", "file_integrity", "system", "event_log"})
+    enabled_collectors: set[str] = field(default_factory=lambda: {"auth", "ftp", "process", "network", "file_integrity", "system", "event_log"})
 
     @classmethod
     def from_json(cls, path: Path) -> "HostConfig":
         payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-        paths = {"database_path", "auth_log_paths", "monitored_paths", "persistence_paths", "yara_rule_paths", "yara_scan_paths"}
+        paths = {"database_path", "auth_log_paths", "windows_ftp_log_paths", "monitored_paths", "persistence_paths", "yara_rule_paths", "yara_scan_paths"}
         for key in paths:
             if key in payload and key != "database_path":
                 payload[key] = [Path(value) for value in payload[key]]

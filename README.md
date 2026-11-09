@@ -57,7 +57,7 @@ pip install -e .
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
-The Windows dependency `pywin32` is installed automatically on Windows. Reading the Security log may require administrator or appropriate event log permissions and the corresponding Windows audit policies. Linux auth logs and protected files likewise require read access. Collectors report degraded status when permissions or dependencies are missing.
+The Windows dependency `pywin32` is installed automatically on Windows. Reading the Security log may require administrator or appropriate event log permissions and the corresponding Windows audit policies. Linux auth and FTP logs and protected files likewise require read access. Collectors report degraded status when permissions or dependencies are missing.
 
 ## Run on on
 
@@ -103,6 +103,7 @@ Example Linux service files are in `packaging/`. The supplied systemd unit expec
 
 - The Windows Security collector reads authentication, audit clearing, account/service creation, task change and group membership event IDs. Persistence adds System service events 7040/7045; optional Sysmon reads network ID 3. Channels need access and relevant audit configuration; RT-HID does not inspect every Windows attack technique.
 - Linux auth parsing currently covers common SSH and sudo log lines. Some distributions use only journald or different log formats; configure a readable auth log path or add a collector for those sources.
+- FTP brute-force detection reads native vsftpd and ProFTPD login outcomes on Linux. The default Linux paths include `/var/log/vsftpd.log` and `/var/log/proftpd/proftpd.log`; add a different location to `auth_log_paths`. On Windows, `windows_ftp` reads IIS FTP W3C logs under `C:\inetpub\logs\LogFiles`; set `windows_ftp_log_paths` for a custom directory. IIS logging must include client IP, method and FTP status. Only PASS 530/230 outcomes count; other Windows FTP servers need their own log parser. Existing log files are baselined on the first scan.
 - SSH brute-force counting uses primary sshd password/keyboard-interactive result lines. PAM context, standalone invalid-user notices and aggregate summaries do not count as additional guesses. SSH records without a valid remote IP are excluded from brute-force grouping rather than assigned to the local host. Sudo summaries retain their local username.
 - Process and portable socket collection polls at configured intervals, so short-lived activity can be missed. File integrity and persistence cover configured scopes. There is no automatic blocking, deletion or quarantine.
 - Retention runs only when explicitly enabled. It archives old resolved incident evidence and unreferenced raw events before deletion, preserves active/shared evidence, and conservatively retains process graph history. Audit and graph growth still need operator review.

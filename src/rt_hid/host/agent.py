@@ -12,6 +12,7 @@ from typing import Any
 from .alerts.manager import HostAlertManager
 from .collectors.base import Collector
 from .collectors.linux import LinuxAuthCollector, LinuxFileIntegrityCollector, LinuxNetworkCollector, LinuxProcessCollector, LinuxSystemCollector
+from .collectors.ftp import WindowsFtpCollector
 from .collectors.windows import WindowsEventLogCollector, WindowsFileIntegrityCollector, WindowsNetworkCollector, WindowsProcessCollector, WindowsSystemCollector
 from .config import HostConfig
 from .detection.engine import HostDetectionEngine
@@ -68,6 +69,7 @@ class HostAgent:
         elif self.capabilities.system == "windows":
             candidates = [
                 WindowsEventLogCollector(self.config.host_id, self.database, sink),
+                WindowsFtpCollector(self.config.host_id, self.config, self.database, sink),
                 WindowsProcessCollector(self.config.host_id, sink, self.config),
                 WindowsNetworkCollector(self.config.host_id, sink),
                 WindowsFileIntegrityCollector(self.config.host_id, self.config, self.database, sink),
@@ -131,6 +133,7 @@ class HostAgent:
                 name = collector.collector_id.split("_", 1)[-1]
                 interval = {
                     "auth": self.config.auth_interval_seconds,
+                    "ftp": self.config.auth_interval_seconds,
                     "event_log": self.config.auth_interval_seconds,
                     "system_log": self.config.auth_interval_seconds,
                     "sysmon": self.config.auth_interval_seconds,

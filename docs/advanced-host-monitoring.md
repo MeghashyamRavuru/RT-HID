@@ -70,7 +70,15 @@ Phase 6 validation covers response authorization, identity changes, audit immuta
 
 The authentication parser counts primary OpenSSH authentication outcome records instead of also counting PAM context and standalone invalid-user notices. Otherwise one failed login can contribute both an IP-attributed failure and an unattributed failure, producing a second host-only brute-force incident. Supported daemon tags include sshd, sshd-session and sshd-auth, and direct sshd log output remains supported. Usernames are parsed from the outcome record, IP addresses are validated/canonicalized, and unattributed SSH/FTP records cannot fall back to a local-host brute-force group. Sudo summaries retain their local username. Identical primary records still count individually because distinct guesses can have identical log text within the same second.
 
-The additional regression tests are in `tests/test_auth_telemetry.py`. Test and compilation execution for this correction was declined, so the 65-test result above describes the previously verified baseline, not this subsequent change. Restart the agent to load the new parser. Historical duplicate alerts can be marked false positive through the existing investigation workflow.
+The additional regression tests are in `tests/test_auth_telemetry.py`. Restart the agent to load the new parser. Historical duplicate alerts can be marked false positive through the existing investigation workflow.
+
+### FTP authentication collection
+
+The FTP rule previously accepted normalized `ftp_login` events, but no collector emitted them. Linux collection now reads every configured auth log path and recognizes native vsftpd `FAIL LOGIN`/`OK LOGIN` and ProFTPD `USER ... (Login failed)`/`Login successful` outcomes. Connection records and PAM context are ignored so each primary login result counts once. The default Linux paths include `/var/log/vsftpd.log` and `/var/log/proftpd/proftpd.log`; custom service paths must be added to `auth_log_paths`. FTP raw log lines are not stored because they may contain password material.
+
+On Windows, the `windows_ftp` collector reads IIS FTP W3C site logs beneath `windows_ftp_log_paths` (default `C:\inetpub\logs\LogFiles`). It counts `PASS` status 530 as a failure and 230 as success, using the `#Fields` header to locate the source IP, username, method and status. Other FTP commands are ignored. Windows Security logon events are separate and may also fire for the underlying Windows account; the IIS FTP collector does not reinterpret them as FTP. A first scan establishes file offsets; newly rotated files are read from the start. This Windows path has fixture tests only; a live IIS FTP server was not available for validation.
+
+Verification for the SSH and FTP corrections: `python -m unittest discover -s tests -v` passed 79 tests, and `python -m compileall -q src tests` passed. The supplied vsftpd lines were represented with documentation-only IPs in the tests; a live Linux FTP server was not available here.
 
 ## Architecture and schema reference
 

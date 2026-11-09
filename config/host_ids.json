@@ -3,7 +3,8 @@
   "database_path": "data/host_ids.sqlite3",
   "dashboard_host": "127.0.0.1",
   "dashboard_port": 5000,
-  "auth_log_paths": ["/var/log/auth.log", "/var/log/secure"],
+  "auth_log_paths": ["/var/log/auth.log", "/var/log/secure", "/var/log/vsftpd.log", "/var/log/proftpd/proftpd.log"],
+  "windows_ftp_log_paths": ["C:\\inetpub\\logs\\LogFiles"],
   "monitored_paths": ["/etc/passwd", "/etc/shadow", "/etc/sudoers", "/etc/ssh/sshd_config"],
   "process_interval_seconds": 10,
   "executable_hashing_enabled": true,
@@ -18,5 +19,5 @@
   "auth_failure_window_seconds": 300,
   "alert_cooldown_seconds": 300,
   "retention_days": 30,
-  "enabled_collectors": ["auth", "process", "network", "file_integrity", "system", "event_log"]
+  "enabled_collectors": ["auth", "ftp", "process", "network", "file_integrity", "system", "event_log"]
 }

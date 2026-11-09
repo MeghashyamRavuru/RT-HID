@@ -15,6 +15,15 @@ _SSH_RESULT = re.compile(
 _SUDO_FAILURE = re.compile(
     r'(?:^|\s)sudo(?:\[(?P<pid>\d{1,10})\])?:\s*(?P<username>[^\s:;]{1,128})\s*:\s*'
     r'(?P<attempts>\d{1,4})\s+incorrect password attempts?\b', re.IGNORECASE)
+_VSFTPD_LOGIN = re.compile(
+    r'(?:\[pid\s+\d+\]|\bvsftpd(?:\[\d+\])?:)\s*'
+    r'(?:\[(?P<username>[^\]\r\n]{1,128})\]\s*)?'
+    r'(?P<result>FAIL|OK)\s+LOGIN:\s+Client\s+"(?P<address>[^"\r\n]{1,128})"', re.IGNORECASE)
+_PROFTPD_LOGIN = re.compile(
+    r'\bproftpd\[\d+\]:\s+[^\r\n]{0,256}?\('
+    r'[^\[\]\r\n]{0,128}\[(?P<address>[^\]\r\n]{1,128})\]\)\s*[-:]?\s*'
+    r'(?:-\s*)?USER\s+(?P<username>\S{1,128})'
+    r'(?:\s+\(Login failed\):|:\s+Login successful\b)', re.IGNORECASE)
 
 
 def remote_auth_address(value: str | None) -> str | None:
@@ -64,3 +73,20 @@ def parse_linux_auth_line(line: str, host_id: str) -> HostEvent | None:
             username=sudo['username'], metadata={'reported_attempts': int(sudo['attempts'])},
             evidence={'line': redact_auth_line(line)})
     return None
+
+
+def parse_linux_ftp_line(line: str, host_id: str) -> HostEvent | None:
+    vsftpd = _VSFTPD_LOGIN.search(line)
+    proftpd = _PROFTPD_LOGIN.search(line) if vsftpd is None else None
+    result = vsftpd or proftpd
+    if result is None:
+        return None
+    address = remote_auth_address(result['address'])
+    if address is None:
+        return None
+    outcome = ('failure' if result['result'].upper() == 'FAIL' else 'success') if vsftpd else (
+        'failure' if '(login failed)' in result.group(0).lower() else 'success')
+    username = result['username'] if result['username'] else None
+    return HostEvent.create(host_id, 'auth', 'linux_ftp_log', action='ftp_login', outcome=outcome,
+        username=username, source_ip=address, metadata={'ftp_server': 'vsftpd' if vsftpd else 'proftpd'},
+        evidence={'ftp_server': 'vsftpd' if vsftpd else 'proftpd', 'outcome': outcome})

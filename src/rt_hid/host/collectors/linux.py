@@ -16,7 +16,7 @@ from ..models import CollectorStatus, HostEvent
 from ..storage import HostDatabase
 from .base import Collector, EventSink
 from .network import PortableNetworkCollector
-from ..auth_telemetry import parse_linux_auth_line, redact_auth_line as _redact_log_line
+from ..auth_telemetry import parse_linux_auth_line, parse_linux_ftp_line, redact_auth_line as _redact_log_line
 
 
 class LinuxAuthCollector(Collector):
@@ -30,28 +30,29 @@ class LinuxAuthCollector(Collector):
         self._active_path: Path | None = None
 
     def collect_once(self) -> list[HostEvent]:
-        path = next((candidate for candidate in self.paths if candidate.is_file()), None)
-        if path is None:
+        paths = list(dict.fromkeys(candidate for candidate in self.paths if candidate.is_file()))
+        if not paths:
             raise RuntimeError("auth log unavailable; check path and read permissions")
-        self._active_path = path
-        checkpoint_id = f"auth:{path}"
-        offset_value = self.database.get_checkpoint(checkpoint_id)
-        offset = int(offset_value) if offset_value and offset_value.isdigit() else path.stat().st_size
-        size = path.stat().st_size
-        if offset > size:
-            offset = 0
         events: list[HostEvent] = []
-        with path.open("r", encoding="utf-8", errors="replace") as file:
-            file.seek(offset)
-            for line in file:
-                event = self._parse_line(line)
-                if event:
-                    events.append(event)
-            self.database.set_checkpoint(checkpoint_id, str(file.tell()))
+        for path in paths:
+            self._active_path = path
+            checkpoint_id = f"auth:{path}"
+            offset_value = self.database.get_checkpoint(checkpoint_id)
+            offset = int(offset_value) if offset_value and offset_value.isdigit() else path.stat().st_size
+            size = path.stat().st_size
+            if offset > size:
+                offset = 0
+            with path.open("r", encoding="utf-8", errors="replace") as file:
+                file.seek(offset)
+                for line in file:
+                    event = self._parse_line(line)
+                    if event:
+                        events.append(event)
+                self.database.set_checkpoint(checkpoint_id, str(file.tell()))
         return events
 
     def _parse_line(self, line: str) -> HostEvent | None:
-        return parse_linux_auth_line(line, self.host_id)
+        return parse_linux_auth_line(line, self.host_id) or parse_linux_ftp_line(line, self.host_id)
 
 
 class LinuxProcessCollector(Collector):

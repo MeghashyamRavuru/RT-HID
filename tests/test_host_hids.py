@@ -211,7 +211,7 @@ class HostHidsTests(unittest.TestCase):
                 agent = HostAgent(config)
             try:
                 self.assertEqual({collector.collector_id for collector in agent.collectors}, {
-                    "windows_event_log", "windows_process", "windows_network",
+                    "windows_event_log", "windows_ftp", "windows_process", "windows_network",
                     "windows_file_integrity", "windows_system",
                 })
             finally:
