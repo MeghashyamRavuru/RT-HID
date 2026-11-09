@@ -8,10 +8,12 @@ RT-HID runs on an individual Ubuntu/Linux or Windows computer. It collects local
 | --- | --- | --- |
 | Authentication | SSH and sudo entries from configured auth logs | Security log failed/successful local and remote logons |
 | Processes | Newly started processes via `psutil` | Newly started processes via `psutil` |
-| Network | New local listening services | New local listening services |
+| Network | Listeners and inferred outbound socket snapshots | Listeners and inferred outbound socket snapshots; optional Sysmon ID 3 |
 | File integrity | Configured sensitive files | Configured sensitive files |
 | Security changes | File modifications and permissions | Audit log clearing, account creation, service installation |
 | System health | CPU, memory, boot snapshot | CPU, memory, boot snapshot |
+| Persistence (opt in) | Cron, systemd, authorized_keys, shell startup and sudoers metadata | Startup/task files; optional Run/RunOnce and service configuration snapshots |
+| Threat intelligence (opt in) | Local hash, IP and observed-domain IOC matching | Local hash, IP and observed-domain IOC matching |
 
 Rules alert on repeated authentication failures, a successful login after failures, execution from temporary directories, encoded PowerShell commands, new listeners, monitored file changes, and the listed Windows security changes. The encoded PowerShell rule is high severity when a statically decoded command contains TCP client and command execution patterns; other encoded commands are medium severity because legitimate administration can use them. The decoded command is never executed or copied into alert evidence. These are indicators for investigation, not proof of compromise. The initial process, listener, file, and Windows Security log scans establish a baseline and do not raise retroactive alerts. Previously stored process events are not automatically reanalyzed when rules change.
 
@@ -50,9 +52,14 @@ On Windows PowerShell:
 pip install -e .
 ```
 
+```powershell
+#for any powershell script blocking issues while activating the venv
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
 The Windows dependency `pywin32` is installed automatically on Windows. Reading the Security log may require administrator or appropriate event log permissions and the corresponding Windows audit policies. Linux auth logs and protected files likewise require read access. Collectors report degraded status when permissions or dependencies are missing.
 
-## Run on one host
+## Run on on
 
 Start the monitor and local dashboard together:
 
@@ -64,13 +71,13 @@ On a new database, sign in with username `admin` and password `admin`. The first
 
 Open `http://127.0.0.1:5000` on that same computer and sign in. The dashboard and all HTTP API endpoints require login. Sessions expire after eight hours, write actions require a CSRF token, and repeated failed logins are temporarily blocked. The dashboard only binds to loopback; use a local browser. The host's SQLite database contains the password hash and session signing secret, so protect the database file with operating-system permissions.
 
-HTTP API clients must keep the login session cookie and send the `csrf_token` from `GET /api/session` as the `X-CSRF-Token` header on POST requests. Initial password setup must be completed in a browser before API access. Use the same `--config` option for all commands when using a custom configuration.
+HTTP API clients must keep the login session cookie and send the `csrf_token` from `GET /api/session` as the `X-CSRF-Token` header on all write requests (POST, PUT, PATCH and DELETE). Initial password setup must be completed in a browser before API access. Use the same `--config` option for all commands when using a custom configuration.
 
-The console has Overview, Alerts, Incidents, Processes, Network, File integrity, Collectors, and Settings / About views. Overview shows stored counts, seven UTC days of new incidents, alert severity excluding false positives, detection categories, and recent records. The collector center distinguishes healthy, degraded, unavailable, and stopped monitoring, including partial scan errors.
+The console has Overview, Alerts, Incidents, Processes, Network, File integrity, Persistence, Intelligence, Rules / ATT&CK, Operations, Collectors, and Settings / About views. Overview shows stored counts, seven UTC days of new incidents, alert severity excluding false positives, detection categories, and recent records. The collector center distinguishes healthy, degraded, unavailable, and stopped monitoring, including partial scan errors and unsupported optional sources.
 
-Alerts and incidents support search, filters, sorting, pagination, and evidence review. Incident investigation includes related alerts, a timeline, source events, affected assets, notes, JSON export, acknowledgement, resolution, undo, and false-positive actions. Process, network, and file views show **stored events**, not complete live inventories. The network view covers newly observed local listeners, not outbound traffic. The file view covers configured monitored paths, not the whole filesystem. Process command lines are stored with best-effort redaction and shown only in the protected dashboard.
+Alerts and incidents support search, filters, sorting, pagination, and evidence review. Incident investigation includes related alerts, correlation explanations, a chronological timeline, source events, affected assets, notes, JSON export with an integrity hash, acknowledgement, resolution, undo, and false-positive actions. Process, network, and file views show **stored events**, not complete live inventories. Process ancestry uses PID and creation time and leaves missing parents explicit. Remote socket direction is inferred by psutil polling; optional Sysmon provides native outbound indications on configured Windows hosts. The file view covers configured monitored paths, not the whole filesystem. Process command lines are stored with best-effort redaction and shown only in the protected dashboard.
 
-The new authenticated `GET /api/alert-page` and `GET /api/event-page` endpoints return paginated `{items,total,limit,offset}` objects. `GET /api/settings` returns read-only configuration summary without authentication secrets. Existing `/api/alerts`, `/api/incidents`, `/api/overview`, incident actions, CSRF requirements, and session behavior remain available. New explorer requests accept `limit` (1–100), `offset` (0–1,000,000), `order` (`newest` or `oldest`), and up to 100 search characters. Use `kind=process`, `kind=network`, or `kind=file` for event pages.
+The new authenticated `GET /api/alert-page` and `GET /api/event-page` endpoints return paginated `{items,total,limit,offset}` objects. `GET /api/settings` returns read-only configuration summary without authentication secrets. Existing `/api/alerts`, `/api/incidents`, `/api/overview`, incident actions, CSRF requirements, and session behavior remain available. New explorer requests accept `limit` (1–100), `offset` (0–1,000,000), `order` (`newest` or `oldest`), and up to 100 search characters. Use `kind=process`, `kind=network`, `kind=file`, or `kind=persistence` for event pages.
 
 To run without the web UI:
 
@@ -78,19 +85,31 @@ To run without the web UI:
 python -m rt_hid.host.cli monitor
 ```
 
-Other commands are `status`, `alerts`, and `incidents`. Pass `--config config/host_ids.json` before the command to use the sample Linux configuration. Without a config file, the agent uses the machine hostname as its host ID and chooses platform defaults. Its database is `data/host_ids.sqlite3`; this runtime data is ignored by Git.
+Other commands are `status`, `alerts`, `incidents`, `backup`, `validate-backup PATH`, and `restore-backup SOURCE NEW_DESTINATION`. Pass `--config config/host_ids.json` before the command to use the sample Linux configuration. Without a config file, the agent uses the machine hostname as its host ID and chooses platform defaults. Its database is `data/host_ids.sqlite3`; this runtime data is ignored by Git.
+
+## Advanced monitoring capabilities
+
+Behavioral rules detect suspicious interpreter parents, verified downloader chains, temporary scripts and misplaced system executable names. Rule settings persist in SQLite and support enablement, bounded thresholds and exact allowlists. Correlation requires a shared process instance, executable path or account SID within a configured window; timestamp proximity alone is insufficient. The ATT&CK view lists implemented active mappings and known gaps.
+
+The Intelligence view imports validated JSON/CSV indicators and manages enablement, removal and expiry. Matching requires `threat_intelligence_enabled: true`. Persistence monitoring requires `persistence_enabled: true`; registry and native service snapshots have separate opt-ins. `sysmon_enabled` optionally reads an existing Sysmon channel; RT-HID does not install Sysmon or change audit policy.
+
+Operations includes a bounded background queue, optional YARA scanning, response audit history and database maintenance. Install YARA only when needed with `pip install -e ".[yara]"`, then configure rule files and allowed scan paths. Scanning, process response and retention deletion default to disabled. Process termination requires administrator password verification, a single-use confirmation and a verified live process identity. Firewall modification and persistence disablement are unsupported.
+
+See [advanced host monitoring, API reference and validation](docs/advanced-host-monitoring.md) and [optional configuration example](config/advanced.example.json) for the full support matrix, rules, migrations, performance results, limitations and Windows/Linux validation steps.
 
 Example Linux service files are in `packaging/`. The supplied systemd unit expects a checkout at `/opt/rt-hid` and config at `/etc/rt-hid/host_ids.json`; edit those paths for another location. The service runs the monitor and dashboard locally. Complete the first login in a browser on the host.
 
 ## Limits
 
-- The Windows Security collector reads event IDs 4624, 4625, 1102, 4697, and 4720. It needs Security log access and relevant audit policies. It does not inspect every Windows attack technique.
+- The Windows Security collector reads authentication, audit clearing, account/service creation, task change and group membership event IDs. Persistence adds System service events 7040/7045; optional Sysmon reads network ID 3. Channels need access and relevant audit configuration; RT-HID does not inspect every Windows attack technique.
 - Linux auth parsing currently covers common SSH and sudo log lines. Some distributions use only journald or different log formats; configure a readable auth log path or add a collector for those sources.
-- Process and listener collection polls at configured intervals, so short-lived activity can be missed. File integrity checks only configured paths. The program raises alerts; it does not block attacks or remove malware.
-- The `retention_days` setting is reserved for a future retention job. No automatic database pruning is implemented yet.
+- Process and portable socket collection polls at configured intervals, so short-lived activity can be missed. File integrity and persistence cover configured scopes. There is no automatic blocking, deletion or quarantine.
+- Retention runs only when explicitly enabled. It archives old resolved incident evidence and unreferenced raw events before deletion, preserves active/shared evidence, and conservatively retains process graph history. Audit and graph growth still need operator review.
+- Hash chaining detects changes to an export/history but cannot provide tamper-proof storage against an attacker controlling the host. Backups contain authentication secrets and must be protected like the live database.
 
 ## Tests
 
 ```bash
 python -m unittest discover -s tests -v
+python -m compileall -q src tests
 ```

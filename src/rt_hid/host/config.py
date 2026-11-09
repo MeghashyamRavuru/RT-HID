@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -35,12 +36,35 @@ class HostConfig:
     auth_failure_window_seconds: float = 300.0
     alert_cooldown_seconds: float = 300.0
     retention_days: int = 30
+    rule_settings: dict[str, dict[str, Any]] = field(default_factory=dict)
+    correlation_window_seconds: float = 300.0
+    network_unusual_ports: list[int] = field(default_factory=lambda: [4444, 5555, 6667, 9001])
+    network_destination_allowlist: list[str] = field(default_factory=list)
+    network_repeat_threshold: int = 5
+    threat_intelligence_enabled: bool = False
+    sysmon_enabled: bool = False
+    persistence_enabled: bool = False
+    persistence_paths: list[Path] = field(default_factory=list)
+    persistence_registry_enabled: bool = False
+    persistence_services_enabled: bool = False
+    persistence_interval_seconds: float = 60.0
+    persistence_max_files: int = 500
+    persistence_max_bytes: int = 1024 * 1024
+    persistence_verify_every_scans: int = 10
+    yara_enabled: bool = False
+    yara_rule_paths: list[Path] = field(default_factory=list)
+    yara_scan_paths: list[Path] = field(default_factory=list)
+    yara_max_bytes: int = 16 * 1024 * 1024
+    yara_timeout_seconds: int = 10
+    response_enabled: bool = False
+    retention_enabled: bool = False
+    maintenance_interval_seconds: float = 86400.0
     enabled_collectors: set[str] = field(default_factory=lambda: {"auth", "process", "network", "file_integrity", "system", "event_log"})
 
     @classmethod
     def from_json(cls, path: Path) -> "HostConfig":
         payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-        paths = {"database_path", "auth_log_paths", "monitored_paths"}
+        paths = {"database_path", "auth_log_paths", "monitored_paths", "persistence_paths", "yara_rule_paths", "yara_scan_paths"}
         for key in paths:
             if key in payload and key != "database_path":
                 payload[key] = [Path(value) for value in payload[key]]
@@ -64,12 +88,15 @@ class HostConfig:
             self.auth_interval_seconds,
             self.file_integrity_interval_seconds,
             self.alert_cooldown_seconds,
+            self.persistence_interval_seconds,
+            self.correlation_window_seconds,
+            self.maintenance_interval_seconds,
         ):
-            if value <= 0:
+            if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or value <= 0:
                 raise ValueError("collection intervals and cooldown must be positive")
-        if self.auth_failure_threshold < 2 or self.auth_failure_window_seconds <= 0:
+        if type(self.auth_failure_threshold) is not int or not 2 <= self.auth_failure_threshold <= 100 or not math.isfinite(self.auth_failure_window_seconds) or not 0 < self.auth_failure_window_seconds <= 86400:
             raise ValueError("invalid authentication failure rule configuration")
-        if self.retention_days < 1:
+        if type(self.retention_days) is not int or not 1 <= self.retention_days <= 36500:
             raise ValueError("retention_days must be positive")
         if not isinstance(self.executable_hashing_enabled, bool):
             raise ValueError("executable_hashing_enabled must be a boolean")
@@ -79,3 +106,26 @@ class HostConfig:
             raise ValueError("executable_hash_max_bytes must be between 0 and 64 MiB")
         if not 0 <= self.process_hashes_per_scan <= 8:
             raise ValueError("process_hashes_per_scan must be between 0 and 8")
+        for key in ("threat_intelligence_enabled", "sysmon_enabled", "persistence_enabled", "persistence_registry_enabled",
+                    "persistence_services_enabled", "yara_enabled", "response_enabled", "retention_enabled"):
+            if not isinstance(getattr(self, key), bool):
+                raise ValueError(f"{key} must be a boolean")
+        if not 1 <= self.persistence_max_files <= 5000 or not 1 <= self.persistence_max_bytes <= 16 * 1024 * 1024:
+            raise ValueError("invalid persistence scan limits")
+        if type(self.persistence_verify_every_scans) is not int or not 1 <= self.persistence_verify_every_scans <= 1000:
+            raise ValueError('invalid persistence verification interval')
+        if not 1 <= self.yara_max_bytes <= 64 * 1024 * 1024 or not 1 <= self.yara_timeout_seconds <= 60:
+            raise ValueError("invalid YARA scan limits")
+        if not 2 <= self.network_repeat_threshold <= 100 or any(type(port) is not int or not 1 <= port <= 65535 for port in self.network_unusual_ports):
+            raise ValueError("invalid network rule settings")
+        import ipaddress
+        for network in self.network_destination_allowlist:
+            ipaddress.ip_network(network, strict=False)
+        if not isinstance(self.rule_settings, dict):
+            raise ValueError("rule_settings must be an object")
+        if not 1 <= self.correlation_window_seconds <= 86400:
+            raise ValueError('correlation window must be between 1 second and 1 day')
+        for key in ('persistence_paths','yara_scan_paths','yara_rule_paths'):
+            values = getattr(self,key)
+            if not isinstance(values,list) or len(values)>64 or any(not isinstance(path,Path) for path in values):
+                raise ValueError('invalid configured path list')

@@ -3,22 +3,32 @@ from __future__ import annotations
 import base64
 import binascii
 import re
+import uuid
+from dataclasses import replace
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
 from ..config import HostConfig
 from ..models import Detection, HostEvent
+from .registry import RuleRegistry
+from .behavior import evaluate_behavior, is_temporary
+from .network_rules import evaluate_connections
+from .persistence_rules import evaluate_persistence
+from ..identity import event_instance
 
 
 class HostDetectionEngine:
     """Explainable, platform-neutral rules over normalized host events."""
 
-    def __init__(self, config: HostConfig) -> None:
+    def __init__(self, config: HostConfig, database=None, graph=None) -> None:
         self.config = config
+        self.registry = RuleRegistry(config, database)
+        self.graph = graph
         self._recent_auth_failures: dict[tuple[str, str], deque[HostEvent]] = defaultdict(deque)
         self._known_listeners: set[tuple[str, int, str]] = set()
         self._recent_event_ids: set[str] = set()
         self._recent_event_order: deque[str] = deque()
+        self._recent_connections = {}
 
     def evaluate(self, event: HostEvent) -> list[Detection]:
         if event.event_id in self._recent_event_ids:
@@ -27,29 +37,45 @@ class HostDetectionEngine:
             self._recent_event_ids.discard(self._recent_event_order.popleft())
         self._recent_event_ids.add(event.event_id)
         self._recent_event_order.append(event.event_id)
-        if event.event_type == "auth":
-            return self._auth_rules(event)
-        if event.event_type == "network_listen":
-            return self._network_rules(event)
-        if event.event_type == "process_start":
-            return self._process_rules(event)
-        if event.event_type == "file_change":
-            return self._file_rules(event)
-        if event.event_type == "security_change":
-            return self._security_rules(event)
-        return []
+        handlers = {"auth": self._auth_rules, "network_listen": self._network_rules,
+                    "process_start": self._process_rules, "file_change": self._file_rules,
+                    "security_change": self._security_rules}
+        candidates = handlers[event.event_type](event) if event.event_type in handlers else []
+        if event.event_type == "network_connection":
+            candidates.extend(evaluate_connections(self, event))
+        if event.event_type == "persistence_change" or (event.event_type == "security_change" and event.action == "group_member_added"):
+            candidates.extend(evaluate_persistence(event))
+        if event.event_type == 'file_scan' and event.evidence.get('matched_rules'):
+            candidates.append(Detection.create(rule_id='HIDS-YARA-001',rule_name='User-provided YARA rule matched',category='file_scan',
+                tactic='Execution',technique_id=None,severity='medium',confidence=.6,timestamp=event.timestamp,event_ids=(event.event_id,),
+                reason='Configured YARA rules matched a file snapshot; a match is not confirmation of malware',
+                evidence={**event.evidence,'file_path':event.file_path},investigation='Review rule provenance, file hash and host behavior before responding.',host_id=event.host_id))
+        return self.finalize(candidates, event)
+
+    def finalize(self, candidates, event):
+        results = []
+        for candidate in candidates:
+            item = self.registry.apply(candidate, event)
+            if item:
+                if event_instance(event):
+                    item = replace(item, evidence={**item.evidence, "process_identity": event_instance(event)})
+                key = f"{item.host_id}|{item.rule_id}|{item.rule_version}|{'|'.join(sorted(item.event_ids))}"
+                results.append(replace(item, detection_id=uuid.uuid5(uuid.NAMESPACE_URL, key).hex))
+        return results
 
     def _auth_rules(self, event: HostEvent) -> list[Detection]:
         if event.action not in {"ssh_login", "ftp_login", "sudo", "remote_login", "local_login"}:
             return []
         source = event.source_ip or f"local:{event.username or 'unknown'}"
-        key = (source, event.action)
+        rule_key = "HIDS-AUTH-001" if event.action == "ssh_login" else "HIDS-AUTH-002"
+        threshold = self.registry.settings.get(rule_key, {}).get("threshold", self.config.auth_failure_threshold)
+        key = (event.host_id, source, event.action)
         failures = self._recent_auth_failures[key]
         cutoff = _parse_timestamp(event.timestamp) - timedelta(seconds=self.config.auth_failure_window_seconds)
         while failures and _parse_timestamp(failures[0].timestamp) < cutoff:
             failures.popleft()
         if event.outcome == "success":
-            if len(failures) < self.config.auth_failure_threshold:
+            if len(failures) < threshold:
                 failures.clear()
                 return []
             related = tuple(item.event_id for item in failures) + (event.event_id,)
@@ -65,8 +91,12 @@ class HostDetectionEngine:
             )]
         if event.outcome != "failure":
             return []
+        if len(self._recent_auth_failures) > 2048:
+            self._recent_auth_failures.pop(next(iter(self._recent_auth_failures)))
         failures.append(event)
-        if len(failures) < self.config.auth_failure_threshold:
+        while len(failures) > 100:
+            failures.popleft()
+        if len(failures) < threshold:
             return []
         rule_id = "HIDS-AUTH-001" if event.action == "ssh_login" else "HIDS-AUTH-002"
         return [Detection.create(
@@ -76,7 +106,7 @@ class HostDetectionEngine:
             tactic="Credential Access",
             technique_id="T1110",
             severity="high",
-            confidence=min(0.99, 0.6 + len(failures) / (self.config.auth_failure_threshold * 10)),
+            confidence=min(0.99, 0.6 + len(failures) / (threshold * 10)),
             timestamp=event.timestamp,
             event_ids=tuple(item.event_id for item in failures),
             reason=f"{len(failures)} failed {event.action} attempts from {source} within the configured window",
@@ -88,10 +118,13 @@ class HostDetectionEngine:
     def _network_rules(self, event: HostEvent) -> list[Detection]:
         if event.action != "listen" or event.destination_port is None:
             return []
-        identity = (event.protocol or "unknown", event.destination_port, event.process_name or "")
+        identity = (event.host_id, event.protocol or "unknown", event.destination_port, event.process_name or "")
         if identity in self._known_listeners:
             return []
         self._known_listeners.add(identity)
+        if len(self._known_listeners) > 10000:
+            self._known_listeners.clear()
+            self._known_listeners.add(identity)
         severity = "medium" if event.destination_port in {21, 22, 23, 445, 3389} else "low"
         return [Detection.create(
             rule_id="HIDS-NET-001",
@@ -112,7 +145,7 @@ class HostDetectionEngine:
     def _process_rules(self, event: HostEvent) -> list[Detection]:
         path = (event.executable_path or "").lower().replace("\\", "/")
         parent = (event.metadata.get("parent_name") or "").lower()
-        temporary = path.startswith(("/tmp/", "/var/tmp/", "/dev/shm/")) or "/appdata/local/temp/" in path or path.startswith("c:/windows/temp/")
+        temporary = is_temporary(path)
         detections: list[Detection] = []
         if temporary:
             detections.append(Detection.create(
@@ -153,6 +186,7 @@ class HostDetectionEngine:
                               "and verify any network destination. Encoded commands can also be used for administration.",
                 host_id=event.host_id,
             ))
+        detections.extend(evaluate_behavior(event, self.graph, self.config.correlation_window_seconds))
         return detections
 
     def _file_rules(self, event: HostEvent) -> list[Detection]:

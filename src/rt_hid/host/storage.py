@@ -13,6 +13,7 @@ from typing import Any
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .models import CollectorStatus, Detection, HostEvent, utc_now
+from .migrations import migrate
 
 
 def _like_pattern(query: str) -> str:
@@ -31,7 +32,13 @@ class HostDatabase:
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute("PRAGMA busy_timeout=5000")
-        self._initialize()
+        try:
+            self._initialize()
+            with self._lock:
+                migrate(self.connection)
+        except Exception:
+            self.connection.close()
+            raise
 
     def _initialize(self) -> None:
         with self._lock, self.connection:
@@ -98,6 +105,8 @@ class HostDatabase:
                 "INSERT OR REPLACE INTO detections(detection_id, timestamp, host_id, rule_id, category, severity, payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (detection.detection_id, detection.timestamp, detection.host_id, detection.rule_id, detection.category, detection.severity, json.dumps(detection.to_dict())),
             )
+            self.connection.execute('DELETE FROM detection_events WHERE detection_id=?',(detection.detection_id,))
+            self.connection.executemany('INSERT OR IGNORE INTO detection_events VALUES (?,?)',[(detection.detection_id,key) for key in detection.event_ids])
 
     def save_alert(self, alert: dict[str, Any]) -> None:
         with self._lock, self.connection:
@@ -112,6 +121,9 @@ class HostDatabase:
                 "INSERT OR REPLACE INTO incidents(incident_id, state, first_seen, last_seen, payload) VALUES (?, ?, ?, ?, ?)",
                 (incident["incident_id"], incident["state"], incident["first_seen"], incident["last_seen"], json.dumps(incident)),
             )
+            for table,field in (('incident_detections','detection_ids'),('incident_events','event_ids')):
+                self.connection.execute(f'DELETE FROM {table} WHERE incident_id=?',(incident['incident_id'],))
+                self.connection.executemany(f'INSERT OR IGNORE INTO {table} VALUES (?,?)',[(incident['incident_id'],key) for key in incident.get(field,[])])
 
     def save_collector_status(self, status: CollectorStatus) -> None:
         with self._lock, self.connection:
@@ -178,6 +190,7 @@ class HostDatabase:
             history.append(payload["state"])
             payload["state_history"] = history[-20:]
             payload["state"] = state
+            payload['lifecycle_events'] = (payload.get('lifecycle_events',[]) + [{'timestamp':utc_now(),'state':state,'action':'set_state'}])[-100:]
             self.connection.execute("UPDATE incidents SET state = ?, payload = ? WHERE incident_id = ?", (state, json.dumps(payload), incident_id))
 
     def undo_incident_state(self, incident_id: str) -> str:
@@ -192,6 +205,7 @@ class HostDatabase:
             previous = history.pop()
             payload["state_history"] = history
             payload["state"] = previous
+            payload['lifecycle_events'] = (payload.get('lifecycle_events',[]) + [{'timestamp':utc_now(),'state':previous,'action':'undo_state'}])[-100:]
             self.connection.execute(
                 "UPDATE incidents SET state = ?, payload = ? WHERE incident_id = ?",
                 (previous, json.dumps(payload), incident_id),
@@ -249,7 +263,7 @@ class HostDatabase:
             return True
 
     def verify_admin_password(self, password: str) -> bool:
-        if len(password) > 1024:
+        if not isinstance(password,str) or len(password) > 1024:
             return False
         with self._lock:
             row = self.connection.execute(
@@ -316,21 +330,24 @@ class HostDatabase:
                 " LIMIT ? OFFSET ?",
                 (*params, limit, offset),
             ).fetchall()
-            items = []
-            for row in rows:
-                incident = json.loads(row["payload"])
-                if not incident.get("title") or not incident.get("severity"):
-                    latest = self.connection.execute(
-                        "SELECT payload FROM alerts WHERE incident_id = ? ORDER BY last_seen DESC LIMIT 1",
-                        (incident["incident_id"],),
-                    ).fetchone()
-                    if latest:
-                        alert = json.loads(latest["payload"])
-                        incident.setdefault("title", alert.get("title"))
-                        incident.setdefault("severity", alert.get("severity"))
-                        incident.setdefault("subject", alert.get("file_path") or alert.get("source_ip")
-                                            or alert.get("evidence", {}).get("username"))
-                items.append(incident)
+            items = [json.loads(row['payload']) for row in rows]
+            incomplete = [item['incident_id'] for item in items if not item.get('title') or not item.get('severity')]
+            latest = {}
+            if incomplete:
+                placeholders = ','.join('?' for _ in incomplete)
+                alert_rows = self.connection.execute(
+                    "SELECT incident_id,payload FROM (SELECT incident_id,payload,ROW_NUMBER() OVER "
+                    "(PARTITION BY incident_id ORDER BY last_seen DESC) AS position FROM alerts "
+                    f"WHERE incident_id IN ({placeholders})) WHERE position=1",incomplete).fetchall()
+                latest = {row['incident_id']:json.loads(row['payload']) for row in alert_rows}
+            for incident in items:
+                alert = latest.get(incident['incident_id'])
+                if alert:
+                    if not incident.get('title'):
+                        incident['title'] = alert.get('title')
+                    if not incident.get('severity'):
+                        incident['severity'] = alert.get('severity')
+                    incident.setdefault('subject',alert.get('file_path') or alert.get('source_ip') or alert.get('evidence',{}).get('username'))
         return {"items": items, "total": total,
                 "limit": limit, "offset": offset}
 
@@ -402,10 +419,9 @@ class HostDatabase:
             placeholders = ",".join("?" for _ in ids)
             with self._lock:
                 related = self.connection.execute(
-                    "SELECT DISTINCT evidence.value AS event_id, alerts.incident_id "
-                    "FROM detections JOIN json_each(detections.payload, '$.event_ids') AS evidence "
-                    "JOIN alerts ON json_extract(alerts.payload, '$.detection_id') = detections.detection_id "
-                    f"WHERE evidence.value IN ({placeholders})", ids,
+                    "SELECT DISTINCT detection_events.event_id, incident_detections.incident_id "
+                    "FROM detection_events JOIN incident_detections ON incident_detections.detection_id=detection_events.detection_id "
+                    f"WHERE detection_events.event_id IN ({placeholders})", ids,
                 ).fetchall()
             links: dict[str, list[str]] = {}
             for row in related:
@@ -458,8 +474,16 @@ class HostDatabase:
         paths = [alert.get("file_path") for alert in alerts]
         paths.extend(event.get("file_path") for event in events)
         affected_files = sorted({path for path in paths if path})
+        timeline = ([{"timestamp":item['timestamp'],"kind":"event","id":item['event_id'],"label":item['event_type']} for item in events]
+                    + [{"timestamp":item['timestamp'],"kind":"detection","id":item['detection_id'],"label":item['reason']} for item in detections]
+                    + [{"timestamp":item['created_at'],"kind":"note","id":item['note_id'],"label":"Investigation note"} for item in notes])
+        timeline += [{"timestamp":item['timestamp'],"kind":"state","id":incident_id,"label":item['action']+': '+item['state']} for item in incident.get('lifecycle_events',[])]
+        def timeline_time(item):
+            value = datetime.fromisoformat(item['timestamp'].replace('Z','+00:00'))
+            return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+        timeline.sort(key=timeline_time)
         return {"incident": incident, "alerts": alerts, "detections": detections,
-                "events": events, "affected_files": affected_files, "notes": notes}
+                "events": events, "affected_files": affected_files, "notes": notes, "timeline":timeline}
 
     def _records_by_ids(self, table: str, id_column: str, ids: list[str]) -> list[dict[str, Any]]:
         # Table and column names are fixed by the callers; IDs remain bound parameters.

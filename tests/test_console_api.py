@@ -143,9 +143,33 @@ class ConsoleApiTests(unittest.TestCase):
         self.assertEqual(self.client.post(
             f"/api/incidents/{incident_id}/acknowledge", headers=csrf).status_code, 200)
         self.assertEqual(self.client.get("/api/incident-page?state=acknowledged").get_json()["total"], 1)
+
         self.assertEqual(self.client.post(
             f"/api/incidents/{incident_id}/resolve", headers=csrf).status_code, 200)
         self.assertEqual(self.client.get("/api/incident-page?state=resolved").get_json()["total"], 1)
         self.assertEqual(self.client.post(
             f"/api/incidents/{incident_id}/undo-state", headers=csrf).status_code, 200)
         self.assertEqual(self.client.get("/api/incident-page?state=acknowledged").get_json()["total"], 1)
+
+    def test_advanced_routes_require_auth_csrf_and_validate_data(self):
+        for route in ('/api/rules','/api/intelligence','/api/mitre/coverage','/api/response/status','/api/response/history','/api/jobs','/api/maintenance/status','/api/scans/status'):
+            self.assertEqual(self.client.get(route).status_code,401)
+        csrf = self.login()
+        self.assertEqual(self.client.patch('/api/rules/HIDS-BEH-001',json={'enabled':False}).status_code,403)
+        self.assertEqual(self.client.patch('/api/rules/HIDS-BEH-001',json={'enabled':False},headers=csrf).status_code,200)
+        self.assertEqual(self.client.patch('/api/rules/HIDS-BEH-001',json={'severity':[]},headers=csrf).status_code,400)
+        self.assertEqual(self.client.post('/api/intelligence/import',json={'format':[],'content':'[]'},headers=csrf).status_code,400)
+        self.assertEqual(self.client.get('/api/jobs?limit=101').status_code,400)
+        self.assertEqual(self.client.post('/api/response/prepare',json={'instance_id':'a'*64,'reason':'test','password':'not-a-password'},headers=csrf).status_code,403)
+        self.assertEqual(self.client.post('/api/maintenance/retention',json={'confirm':True,'password':123},headers=csrf).status_code,403)
+        self.assertFalse(self.client.get('/api/response/status').get_json()['enabled'])
+        self.assertEqual(self.client.post('/api/rules/test',json={'event_type':'process_start','process_name':{}},headers=csrf).status_code,400)
+        response = self.client.post('/api/rules/test',json={'event_type':'security_change','action':'account_created',
+            'evidence':{'password':'sample-secret','token':'sample-secret'}},headers=csrf)
+        self.assertEqual(response.status_code,200)
+        self.assertFalse(response.get_json()['persisted'])
+        self.assertNotIn(b'sample-secret',response.data)
+        self.assertEqual(self.client.get('/api/alerts').get_json(),[])
+        with self.client.session_transaction() as browser_session:
+            browser_session['admin_version']='expired-version'
+        self.assertEqual(self.client.get('/api/response/history').status_code,401)

@@ -26,7 +26,7 @@ class Collector(ABC):
         started = monotonic()
         try:
             self.status = replace(self.status, available=False, state="collecting",
-                                  last_error=None, detail="collecting")
+                                  last_error=None, detail="collecting", collection_errors=0, inaccessible_processes=0)
             events = self.collect_once()
             for event in events:
                 self.sink(event)
@@ -39,8 +39,9 @@ class Collector(ABC):
                                   detail=self.status.detail if self.status.last_error else f"{len(events)} event(s)")
             return events
         except Exception as error:  # collector isolation is intentional
-            summary = type(error).__name__ if self.collector_id.endswith("_process") else str(error)
+            summary = 'collection: ' + type(error).__name__
             self.status = replace(self.status, available=False, state="degraded",
                                   last_error=summary, detail="degraded",
+                                  collection_errors=max(1,self.status.collection_errors),
                                   last_duration_seconds=monotonic() - started)
             return []

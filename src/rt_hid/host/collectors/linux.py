@@ -15,6 +15,7 @@ from ..config import HostConfig
 from ..models import CollectorStatus, HostEvent
 from ..storage import HostDatabase
 from .base import Collector, EventSink
+from .network import PortableNetworkCollector
 
 
 class LinuxAuthCollector(Collector):
@@ -106,8 +107,11 @@ class LinuxProcessCollector(Collector):
                 unexpected_error = True
 
         try:
+            clear_cache = getattr(psutil.process_iter,'cache_clear',None)
+            if clear_cache is not None:
+                clear_cache()
             process_iterator = iter(psutil.process_iter(
-                ["pid", "ppid", "name", "exe", "username", "create_time"]
+                ["pid", "create_time"]
             ))
         except Exception as exc:
             report("process_enumeration", exc)
@@ -160,8 +164,14 @@ class LinuxProcessCollector(Collector):
                         current[identity] = self._known[identity]
                     continue
 
+                # Expensive optional fields are needed only for a newly observed instance.
+                # Fresh iteration objects above keep creation times reliable across PID reuse.
+                stage = 'process_metadata'
+                if hasattr(process,'as_dict'):
+                    info = {**info,**process.as_dict(attrs=['ppid','name','exe','username'],ad_value=None)}
                 ppid = None
                 parent_name = None
+                parent_created = None
                 stage = "parent_pid"
                 if info.get("ppid") is not None:
                     try:
@@ -174,7 +184,12 @@ class LinuxProcessCollector(Collector):
                 if ppid is not None:
                     stage = "parent_name"
                     try:
-                        parent_name = psutil.Process(ppid).name()
+                        parent_process = psutil.Process(ppid)
+                        parent_name = parent_process.name()
+                        if hasattr(parent_process, "create_time"):
+                            parent_created = float(parent_process.create_time())
+                            if not math.isfinite(parent_created) or not 0 < parent_created <= created:
+                                parent_created = None
                     except (psutil.AccessDenied, psutil.NoSuchProcess,
                             psutil.ZombieProcess, OSError, ValueError) as exc:
                         report("parent_name", exc)
@@ -213,6 +228,7 @@ class LinuxProcessCollector(Collector):
                 metadata = {"create_time": created,
                             "created_at": created_at,
                             "parent_name": parent_name, "command_line": command_line,
+                            "parent_create_time": parent_created,
                             "working_directory": cwd, "executable_sha256": digest,
                             "executable_hash_error": hash_error}
                 current[identity] = {"created_at": created_at}
@@ -336,50 +352,8 @@ def _redact_command_line(arguments: list[str] | None, max_length: int) -> list[s
     return result
 
 
-class LinuxNetworkCollector(Collector):
+class LinuxNetworkCollector(PortableNetworkCollector):
     collector_id = "linux_network"
-
-    def __init__(self, host_id: str, sink: EventSink) -> None:
-        super().__init__(host_id, sink)
-        self.status = CollectorStatus(self.collector_id, "linux", False, True)
-        self._known: set[tuple[Any, ...]] = set()
-        self._initialized = False
-
-    def collect_once(self) -> list[HostEvent]:
-        import psutil
-
-        current: set[tuple[Any, ...]] = set()
-        events: list[HostEvent] = []
-        for connection in psutil.net_connections(kind="inet"):
-            try:
-                if not connection.laddr:
-                    continue
-                address = connection.laddr
-                ip = address.ip
-                port = int(address.port)
-                protocol = "TCP" if connection.type == 1 else "UDP"
-                identity = (protocol, ip, port, connection.pid or 0, connection.status)
-                current.add(identity)
-                if self._initialized and connection.status == "LISTEN" and identity not in self._known:
-                    events.append(HostEvent.create(
-                        self.host_id,
-                        "network_listen",
-                        "psutil",
-                        process_id=connection.pid,
-                        destination_ip=ip,
-                        destination_port=port,
-                        protocol=protocol,
-                        process_name=_process_name(connection.pid),
-                        action="listen",
-                        outcome="observed",
-                        evidence={"status": connection.status},
-                    ))
-            except (AttributeError, OSError, ValueError):
-                continue
-        self._known = current
-        self._initialized = True
-        return events
-
 
 class LinuxFileIntegrityCollector(Collector):
     collector_id = "linux_file_integrity"
@@ -429,7 +403,8 @@ class LinuxFileIntegrityCollector(Collector):
                     ))
                 self.database.save_baseline(str(path), digest, mode, metadata.st_size)
             except (OSError, PermissionError) as error:
-                self.status = CollectorStatus(self.collector_id, "linux", False, True, last_error=str(error), detail="path unavailable")
+                self.status = CollectorStatus(self.collector_id, self.status.platform, False, True,
+                    last_error='file_snapshot: '+type(error).__name__, detail="path unavailable")
         return events
 
 

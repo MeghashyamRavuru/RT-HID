@@ -82,6 +82,11 @@
     .empty,.error-state { color:var(--muted); padding:30px 18px; text-align:center; font-size:12px; }
     .error-state { color:#ffc0b6; }
     .notice { color:var(--amber); font-size:12px; margin:11px 0; }
+    .workspace { display:grid; gap:16px; }
+    .workspace form { display:grid; gap:10px; }
+    .workspace label { font-size:12px; color:var(--muted); }
+    .coverage-table { border-collapse:collapse; width:100%; font-size:12px; }
+    .coverage-table td,.coverage-table th { padding:9px; border-bottom:1px solid var(--line); text-align:left; overflow-wrap:anywhere; }
     .explorer { display:grid; grid-template-columns:minmax(315px,.85fr) minmax(420px,1.15fr); gap:15px; align-items:start; }
     .filters { display:flex; flex-wrap:wrap; gap:8px; padding:13px 16px; border-bottom:1px solid var(--line); }
     input,select,textarea { color:var(--text); background:#0e1a26; border:1px solid #385064; border-radius:7px; padding:9px 10px; min-width:0; }
@@ -135,6 +140,10 @@
         <button data-view="processes" type="button"><span class="nav-icon" aria-hidden="true">⌘</span>Processes</button>
         <button data-view="network" type="button"><span class="nav-icon" aria-hidden="true">◎</span>Network</button>
         <button data-view="files" type="button"><span class="nav-icon" aria-hidden="true">▤</span>File integrity</button>
+        <button data-view="persistence" type="button"><span class="nav-icon" aria-hidden="true">⌁</span>Persistence</button>
+        <button data-view="intelligence" type="button"><span class="nav-icon" aria-hidden="true">◎</span>Intelligence</button>
+        <button data-view="rules" type="button"><span class="nav-icon" aria-hidden="true">≡</span>Rules / ATT&amp;CK</button>
+        <button data-view="operations" type="button"><span class="nav-icon" aria-hidden="true">⚒</span>Operations</button>
         <button data-view="collectors" type="button"><span class="nav-icon" aria-hidden="true">◈</span>Collectors</button>
         <button data-view="settings" type="button"><span class="nav-icon" aria-hidden="true">⚙</span>Settings / About</button>
       </nav>
@@ -163,10 +172,14 @@
 
       <section class="view" id="view-processes" hidden><div class="section-heading"><div><h2>Process events</h2><p>Historical start and stop events, not a live process inventory.</p></div></div><div class="explorer"><section class="panel"><div class="filters"><input id="processes-search" type="search" placeholder="Name, PID, user, or path" aria-label="Search process events"><select id="processes-action" aria-label="Process event type"><option value="all">Start and stop</option><option value="start">Starts</option><option value="stop">Stops</option></select><select id="processes-order" aria-label="Process event order"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div><div id="processes-list" class="list-scroll"></div><div id="processes-pager" class="pager"></div></section><section class="panel"><div class="panel-head"><h2>Process evidence</h2></div><div id="processes-detail" class="detail"><div class="empty">Select a process event.</div></div></section></div></section>
 
-      <section class="view" id="view-network" hidden><div class="section-heading"><div><h2>New listening services</h2><p>Observed listener events only. Outbound connections are not tracked here.</p></div></div><div class="explorer"><section class="panel"><div class="filters"><input id="network-search" type="search" placeholder="Address, port, or process" aria-label="Search listener events"><select id="network-order" aria-label="Network event order"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div><div id="network-list" class="list-scroll"></div><div id="network-pager" class="pager"></div></section><section class="panel"><div class="panel-head"><h2>Listener evidence</h2></div><div id="network-detail" class="detail"><div class="empty">Select a listener event.</div></div></section></div></section>
+      <section class="view" id="view-network" hidden><div class="section-heading"><div><h2>Network observations</h2><p>Stored listeners and remote sockets. Outbound direction is inferred from polling; short-lived connections may be missed.</p></div></div><div class="explorer"><section class="panel"><div class="filters"><input id="network-search" type="search" placeholder="Address, port, or process" aria-label="Search network events"><select id="network-action" aria-label="Network event type"><option value="all">All observations</option><option value="listen">Listeners</option><option value="connect">Remote connections</option></select><select id="network-order" aria-label="Network event order"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div><div id="network-list" class="list-scroll"></div><div id="network-pager" class="pager"></div></section><section class="panel"><div class="panel-head"><h2>Network evidence</h2></div><div id="network-detail" class="detail"><div class="empty">Select a network event.</div></div></section></div></section>
 
       <section class="view" id="view-files" hidden><div class="section-heading"><div><h2>File integrity events</h2><p>Changes to configured paths, not a full filesystem scan.</p></div></div><div class="explorer"><section class="panel"><div class="filters"><input id="files-search" type="search" placeholder="Search file path" aria-label="Search file changes"><select id="files-action" aria-label="File change type"><option value="all">All changes</option><option>modify</option><option>delete</option><option>create</option><option>permission_change</option></select><select id="files-order" aria-label="File event order"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div><div id="files-list" class="list-scroll"></div><div id="files-pager" class="pager"></div></section><section class="panel"><div class="panel-head"><h2>File change evidence</h2></div><div id="files-detail" class="detail"><div class="empty">Select a file event.</div></div></section></div></section>
 
+      <section class="view" id="view-persistence" hidden><div class="section-heading"><div><h2>Persistence changes</h2><p>Subsequent changes to configured startup locations, registry entries, services and audited tasks. Initial baselines are silent.</p></div></div><div class="explorer"><section class="panel"><div class="filters"><input id="persistence-search" type="search" placeholder="Path, entry or service" aria-label="Search persistence events"><select id="persistence-action" aria-label="Persistence change"><option value="all">All changes</option><option>create</option><option>modify</option><option>delete</option></select><select id="persistence-order" aria-label="Persistence order"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div><div id="persistence-list" class="list-scroll"></div><div id="persistence-pager" class="pager"></div></section><section class="panel"><div class="panel-head"><h2>Persistence evidence</h2></div><div id="persistence-detail" class="detail"><div class="empty">Select a persistence change.</div></div></section></div></section>
+      <section class="view workspace" id="view-intelligence" hidden><div class="section-heading"><div><h2>Local threat intelligence</h2><p>Imported indicators stay on this host. Matches require source and behavior review.</p></div></div><section class="panel panel-pad"><p id="intelligence-status" class="detail-intro">Loading matching configuration…</p><form id="ioc-import"><label for="ioc-format">Import format</label><select id="ioc-format"><option value="json">JSON</option><option value="csv">CSV</option></select><label for="ioc-content">Indicator records (type, value, source; optional confidence, severity, expires_at and tags)</label><textarea id="ioc-content" required placeholder='[{"type":"ip","value":"192.0.2.1","source":"local-test","confidence":0.5}]'></textarea><button class="button primary" type="submit">Import indicators</button></form></section><section class="panel"><div id="intelligence-list"></div><div id="intelligence-pager" class="pager"></div></section></section>
+      <section class="view workspace" id="view-rules" hidden><div class="section-heading"><div><h2>Detection rules and coverage</h2><p>Versioned implemented rules. Allowlist entries match all fields in each condition exactly.</p></div></div><div class="explorer"><section class="panel"><div id="rules-list" class="list-scroll"></div></section><section class="panel panel-pad"><div id="rule-detail" class="detail"><div class="empty">Select a rule to view or tune it.</div></div></section></div><section class="panel panel-pad"><h2>Active ATT&amp;CK mappings</h2><div id="coverage-content"></div></section><section class="panel panel-pad"><h2>Test a sanitized event</h2><p class="detail-intro">Does not ingest evidence, execute commands, or change incidents. Stateful chains require collected evidence.</p><form id="rule-test"><label for="rule-sample">Sample event JSON</label><textarea id="rule-sample" required placeholder='{"event_type":"process_start","process_name":"powershell.exe","metadata":{"parent_name":"winword.exe"}}'></textarea><button class="button" type="submit">Test event</button></form><div id="rule-test-result"></div></section></section>
+      <section class="view workspace" id="view-operations" hidden><div class="section-heading"><div><h2>Local operations</h2><p>Controlled response, scoped scanning and evidence maintenance.</p></div></div><section class="panel panel-pad"><h2>Response capability</h2><div id="operations-status"></div></section><section class="panel panel-pad"><h2>Optional YARA scan</h2><div id="scan-status"></div><form id="scan-form"><label for="scan-path">File within configured scan scope</label><input id="scan-path" required autocomplete="off"><button class="button" type="submit">Queue scan</button></form></section><section class="panel panel-pad"><h2>Database health and retention</h2><div id="maintenance-status"></div><div class="action-row"><button class="button" type="button" id="maintenance-backup">Create backup</button><button class="button" type="button" id="maintenance-integrity">Check integrity</button></div><form id="retention-form"><label for="retention-password">Administrator password to run the configured retention policy</label><input id="retention-password" type="password" autocomplete="current-password"><button class="button danger" type="submit" id="retention-run">Archive and apply retention</button></form></section><section class="panel"><div class="panel-head"><h2>Background jobs</h2></div><div id="jobs-list"></div><div id="jobs-pager" class="pager"></div></section><section class="panel"><div class="panel-head"><h2>Action audit history</h2></div><div id="audit-list"></div><div id="audit-pager" class="pager"></div></section></section>
       <section class="view" id="view-collectors" hidden><div class="section-heading"><div><h2>Collector health center</h2><p>Scan results and current monitoring capability.</p></div></div><div id="collector-grid" class="grid health-grid"></div></section>
       <section class="view" id="view-settings" hidden><div class="section-heading"><div><h2>Settings / About</h2><p>Read-only local configuration and product scope.</p></div></div><section class="panel panel-pad"><div id="settings-content" class="empty">Loading settings…</div></section></section>
     </main>
@@ -182,11 +195,11 @@
     };
     const state = {
       view: 'overview', csrf: null, status: null, overview: null, settings: null,
-      offset: { alerts:0, incidents:0, processes:0, network:0, files:0 },
+      offset: { alerts:0, incidents:0, processes:0, network:0, files:0, persistence:0, intelligence:0, jobs:0, audit:0 },
       selected: {}, busy:false, pending:false, detailRequest:0,
     };
-    const titles = { overview:'Overview', alerts:'Alerts', incidents:'Incidents', processes:'Processes', network:'Network', files:'File integrity', collectors:'Collectors', settings:'Settings / About' };
-    const eventKinds = { processes:'process', network:'network', files:'file' };
+    const titles = { overview:'Overview', alerts:'Alerts', incidents:'Incidents', processes:'Processes', network:'Network', files:'File integrity', persistence:'Persistence', intelligence:'Intelligence', rules:'Rules / ATT&CK', operations:'Operations', collectors:'Collectors', settings:'Settings / About' };
+    const eventKinds = { processes:'process', network:'network', files:'file', persistence:'persistence' };
     const label = (value) => value === null || value === undefined || value === '' ? 'Unavailable' : String(value);
     const dateTime = (value) => value ? new Date(value).toLocaleString() : 'Unavailable';
     const relative = (value) => value ? dateTime(value) : 'No successful scan';
@@ -207,12 +220,13 @@
       if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Request failed (${response.status})`);
       return response.json();
     }
-    async function post(path, data) {
-      const response = await fetch(path, { method:'POST', credentials:'same-origin', headers:{ 'X-CSRF-Token':state.csrf, ...(data ? {'Content-Type':'application/json'} : {}) }, body:data ? JSON.stringify(data) : undefined });
+    async function sendJSON(path, method, data) {
+      const response = await fetch(path, { method, credentials:'same-origin', headers:{ 'X-CSRF-Token':state.csrf, ...(data ? {'Content-Type':'application/json'} : {}) }, body:data ? JSON.stringify(data) : undefined });
       if (response.status === 401) { window.location.assign('/login'); throw new Error('Session expired'); }
       if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Request failed (${response.status})`);
       return response.json();
     }
+    const post = (path, data) => sendJSON(path,'POST',data);
     const button = (text, onClick, className = 'button') => {
       const item = element('button', className, text);
       item.type = 'button';
@@ -346,8 +360,9 @@
       for (const item of errors) host.append(element('p', 'record-meta', `${item.collector_id}: ${safeCollectorError(item.last_error)}`));
     }
     function filterSignature(view) {
+      if(view === 'operations') return JSON.stringify([state.offset.jobs,state.offset.audit]);
       const ids = view === 'alerts' ? ['search','severity','status','rule','order'] : view === 'incidents' ? ['search','state','severity','order'] : ['search','action','order'];
-      return JSON.stringify(ids.map(name => $(`#${view}-${name}`)?.value ?? ''));
+      return JSON.stringify([state.offset[view] || 0,...ids.map(name => $(`#${view}-${name}`)?.value ?? '')]);
     }
     function params(view) {
       const result = new URLSearchParams({ limit:'25', offset:String(state.offset[view] || 0), order:$(`#${view}-order`)?.value || 'newest', q:$(`#${view}-search`)?.value.trim() || '' });
@@ -378,7 +393,7 @@
       pager(view, page);
     }
     function eventRow(view, item) {
-      const title = view === 'processes' ? (item.process_name || `PID ${label(item.process_id)}`) : view === 'network' ? `${label(item.destination_ip)}:${label(item.destination_port)}` : label(item.file_path);
+      const title = view === 'processes' ? (item.process_name || `PID ${label(item.process_id)}`) : view === 'network' ? `${label(item.destination_ip)}:${label(item.destination_port)}` : label(item.file_path || item.evidence?.entry || item.evidence?.task_name || item.evidence?.service_name);
       const meta = view === 'processes' ? [item.action, `PID ${label(item.process_id)}`, item.username, dateTime(item.timestamp)] : view === 'network' ? [item.protocol, item.process_name || 'Owner unavailable', dateTime(item.timestamp)] : [item.action, dateTime(item.timestamp)];
       return row(title, meta, item.action || item.event_type, () => selectEvent(view, item), state.selected[view] === item.event_id);
     }
@@ -387,6 +402,16 @@
         const [alerts, incidents] = await Promise.all([getJSON('/api/alert-page?limit=5'),getJSON('/api/incident-page?limit=5')]);
         if (state.view === view) renderOverview(alerts, incidents);
       } else if (view === 'collectors') renderCollectors();
+      else if (view === 'intelligence') {
+        const page = await getJSON(`/api/intelligence?limit=25&offset=${state.offset.intelligence}`);
+        if (state.view === view && filterSignature(view) === signature) renderIntelligence(page);
+      } else if (view === 'rules') {
+        const [rules,coverage] = await Promise.all([getJSON('/api/rules'),getJSON('/api/mitre/coverage')]);
+        if (state.view === view) renderRules(rules,coverage);
+      } else if (view === 'operations') {
+        const data = await Promise.all([getJSON('/api/response/status'),getJSON('/api/scans/status'),getJSON('/api/maintenance/status'),getJSON(`/api/jobs?limit=25&offset=${state.offset.jobs}`),getJSON(`/api/response/history?limit=25&offset=${state.offset.audit}`)]);
+        if (state.view === view && filterSignature(view) === signature) renderOperations(...data);
+      }
       else if (view === 'settings') {
         if (!state.settings) state.settings = await getJSON('/api/settings');
         if (state.view === view) renderSettings();
@@ -410,7 +435,7 @@
         await loadView(view, signature);
       } catch (error) {
         if (state.view === view) {
-          const target = $(`#${view}-list`) || $(`#${view === 'overview' ? 'recent-incidents' : view === 'collectors' ? 'collector-grid' : 'settings-content'}`);
+          const target = $(`#${view}-list`) || $(`#${({overview:'recent-incidents',collectors:'collector-grid',rules:'rules-list',operations:'operations-status'})[view] || 'settings-content'}`);
           target?.replaceChildren(empty(`Could not load data: ${error.message}`, true), button('Retry', refresh));
         }
         toast(error.message || 'Refresh failed', true);
@@ -459,8 +484,11 @@
       const summary = section(target, 'Summary');
       facts(summary, [['State',incident.state],['Severity',incident.severity],['Rule',incident.rule_id],['Host',incident.host_id],['First seen',dateTime(incident.first_seen)],['Last seen',dateTime(incident.last_seen)],['Subject',incident.subject],['Source IP',incident.source_ip]]);
       const actions = element('div','action-row');
-      const exportButton = button('Export JSON', () => {
-        const url = URL.createObjectURL(new Blob([JSON.stringify(bundle,null,2)],{type:'application/json'}));
+      const exportButton = button('Export JSON + integrity hash', async () => {
+        let exported;
+        try { exported = await getJSON(`/api/incidents/${encodeURIComponent(incident.incident_id)}/integrity-export`); }
+        catch (error) { toast(error.message,true); return; }
+        const url = URL.createObjectURL(new Blob([JSON.stringify(exported,null,2)],{type:'application/json'}));
         const link = element('a'); link.href = url; link.download = `incident-${incident.incident_id}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url),1000);
       });
       actions.append(exportButton);
@@ -478,7 +506,8 @@
       for (const alert of alerts) related.append(alertRecord(alert, incident.incident_id));
       if (!alerts.length) related.append(empty('No related alerts.'));
       const timeline = section(target, 'Timeline');
-      const points = [...alerts.map(item => ({time:item.last_seen,title:item.title || item.rule_id,type:'Alert'})), ...events.map(item => ({time:item.timestamp,title:item.event_type,type:'Event'}))].sort((a,b) => String(a.time).localeCompare(String(b.time)));
+      if (incident.correlation_explanation) summary.append(element('p','notice',incident.correlation_explanation));
+      const points = (bundle.timeline || []).map(item => ({time:item.timestamp,title:item.label,type:item.kind}));
       for (const item of points) timeline.append(element('div','record',`${dateTime(item.time)} · ${item.type}: ${item.title}`));
       if (!points.length) timeline.append(empty('No timeline entries.'));
       const rationale = section(target, `Detection rationale (${detections.length})`);
@@ -536,15 +565,32 @@
     function selectEvent(view, item) {
       state.selected[view] = item.event_id;
       const target = $(`#${view}-detail`);
-      target.replaceChildren(element('h2','',view === 'processes' ? item.process_name || item.event_type : view === 'network' ? `${label(item.destination_ip)}:${label(item.destination_port)}` : label(item.file_path)), element('p','detail-intro',`${item.event_type} · observed ${dateTime(item.timestamp)}`));
+      target.replaceChildren(element('h2','',view === 'processes' ? item.process_name || item.event_type : view === 'network' ? `${label(item.destination_ip)}:${label(item.destination_port)}` : label(item.file_path || item.evidence?.entry || item.evidence?.task_name || item.evidence?.service_name)), element('p','detail-intro',`${item.event_type} · observed ${dateTime(item.timestamp)}`));
       if (view === 'processes') {
         const path = String(item.executable_path || '').toLowerCase().replaceAll('\\','/');
         const temporary = path.startsWith('/tmp/') || path.startsWith('/var/tmp/') || path.includes('/appdata/local/temp/');
         facts(target,[['Event',item.action],['Process',item.process_name],['PID',item.process_id],['Parent PID',item.parent_process_id],['Parent',item.metadata?.parent_name],['User',item.username],['Executable',item.executable_path],['Created',item.metadata?.created_at],['SHA-256',item.metadata?.executable_sha256 || item.metadata?.executable_hash_error || 'Unavailable'],['Platform',state.status?.platform?.system],['Working directory',item.metadata?.working_directory]]);
         if (temporary) target.append(element('p','notice','Executable path is in a temporary directory. Investigate its origin.'));
         target.append(element('p','detail-intro','Parent information comes from this event; a complete process tree is not available.'));
+        const relationships = section(target,'Verified process relationships');
+        relationships.append(button('Load ancestry and children',async event => {
+          const control = event.currentTarget; control.disabled = true;
+          try {
+            const data = await getJSON(`/api/processes/${encodeURIComponent(item.event_id)}/relationships`);
+            relationships.replaceChildren(element('h3','','Verified process relationships'));
+            for (const node of data.nodes || []) relationships.append(record(node.event.process_name || `PID ${node.pid}`,`PID ${node.pid} · created ${dateTime(node.event.metadata?.created_at)} · ${node.stopped_at ? 'stopped' : 'no stop observed'}`,{instance_id:node.instance_id,parent_id:node.parent_id,event_id:node.event_id}));
+            relationships.append(element('p','detail-intro',data.complete ? 'Recorded ancestry ends at a known root.' : 'Ancestry is incomplete; missing records are not inferred from PID.'));
+            for (const child of data.children || []) relationships.append(record(`Child: ${child.event.process_name || child.pid}`,dateTime(child.first_seen),{instance_id:child.instance_id,event_id:child.event_id}));
+            if (data.nodes?.[0]) await renderProcessResponse(relationships,data.nodes[0].instance_id);
+          } catch (error) { toast(error.message,true); control.disabled = false; }
+        }));
         const command = section(target,'Redacted command line'); command.append(element('pre','',item.metadata?.command_line?.join(' ') || 'Unavailable'));
-      } else if (view === 'network') facts(target,[['Local address',item.destination_ip],['Port',item.destination_port],['Protocol',item.protocol],['PID',item.process_id],['Process',item.process_name || 'Ownership unavailable'],['First observed',dateTime(item.timestamp)],['Platform',state.status?.platform?.system],['Event type',item.event_type]]);
+      } else if (view === 'network') facts(target,[['Local address',item.source_ip || item.destination_ip],['Local port',item.metadata?.source_port],['Remote address',item.action === 'connect' ? item.destination_ip : null],['Port',item.destination_port],['Direction',item.metadata?.direction || 'listener'],['State',item.metadata?.connection_state],['Protocol',item.protocol],['PID',item.process_id],['Process',item.process_name || 'Ownership unavailable'],['Username',item.username],['Observed',dateTime(item.timestamp)],['Platform',state.status?.platform?.system],['Event type',item.event_type]]);
+      else if (view === 'persistence') {
+        facts(target,[['Entry',item.file_path || item.evidence?.entry || item.evidence?.task_name || item.evidence?.service_name],['Change',item.action],['Kind',item.evidence?.kind || item.metadata?.kind],['User',item.username],['Target executable',item.metadata?.target_path],['Scope',item.evidence?.scope],['Observed',dateTime(item.timestamp)]]);
+        const before = section(target,'Previous state'); evidence(before,item.evidence?.previous);
+        const after = section(target,'Current state'); evidence(after,item.evidence?.current);
+      }
       else {
         const monitored = state.settings?.monitored_paths?.includes(item.file_path);
         facts(target,[['Path',item.file_path],['Change',item.action],['First observed',dateTime(item.timestamp)],['Last observed',dateTime(item.timestamp)],['Platform',state.status?.platform?.system],['Configured for monitoring',state.settings ? (monitored ? 'Yes' : 'No or no longer configured') : 'Unknown']]);
@@ -554,6 +600,95 @@
       if (!item.related_incident_ids?.length) links.append(empty('No linked incident found.'));
       const stored = section(target,'Stored evidence'); evidence(stored,item);
     }
+    async function mutate(control,path,method,data,success,question=null) {
+      if (control.disabled || (question && !window.confirm(question))) return;
+      control.disabled = true;
+      try { const result = await sendJSON(path,method,data); toast(success); await refresh(); return result; }
+      catch (error) { toast(error.message,true); }
+      finally { control.disabled = false; }
+    }
+    function renderIntelligence(page) {
+      $('#intelligence-status').textContent = page.matching_enabled ? 'Local IOC matching is enabled. Indicators expire automatically at their configured expiration time.' : 'Matching is disabled in host configuration. You can manage indicators here before enabling it.';
+      const target = $('#intelligence-list'); target.replaceChildren();
+      for (const item of page.items) {
+        const box = record(`${item.type}: ${item.value}`,`${item.source} · ${item.severity} · confidence ${item.confidence} · ${item.expired ? 'expired' : item.enabled ? 'enabled' : 'disabled'}`,item);
+        const actions = element('div','action-row');
+        let toggle,remove;
+        toggle = button(item.enabled ? 'Disable' : 'Enable',() => mutate(toggle,`/api/intelligence/${encodeURIComponent(item.indicator_id)}`,'PATCH',{enabled:!item.enabled},'Indicator updated'));
+        remove = button('Remove',() => mutate(remove,`/api/intelligence/${encodeURIComponent(item.indicator_id)}`,'DELETE',null,'Indicator removed','Remove this local indicator?'),'button danger');
+        actions.append(toggle,remove); box.append(actions); target.append(box);
+      }
+      if (!page.items.length) target.append(empty('No local indicators imported.'));
+      pager('intelligence',page);
+    }
+    function renderRules(rules,coverage) {
+      const target = $('#rules-list'); target.replaceChildren();
+      for (const item of rules.items) target.append(row(item.name,[item.rule_id,`v${item.version}`,item.severity],item.enabled ? 'enabled' : 'disabled',() => selectRule(item)));
+      const matrix = $('#coverage-content'); matrix.replaceChildren();
+      const table = element('table','coverage-table');
+      const head = element('thead'); const heading = element('tr');
+      for (const name of ['Technique','Tactic','Active rules']) { const cell=element('th','',name); cell.scope='col'; heading.append(cell); }
+      head.append(heading); table.append(head);
+      const body = element('tbody'); const techniques = new Map();
+      for (const item of coverage.rules) {
+        const group = techniques.get(item.technique_id) || {tactic:item.tactic,rules:[]}; group.rules.push(item.rule_id); techniques.set(item.technique_id,group);
+      }
+      for (const [technique,group] of techniques) { const line = element('tr'); for (const value of [technique,group.tactic,group.rules.join(', ')]) line.append(element('td','',value)); body.append(line); }
+      table.append(body); matrix.append(table,element('p','detail-intro',coverage.scope),element('p','notice',`Coverage gaps: ${coverage.gaps.join('; ')}. Mapping ${coverage.mapping_version}.`));
+    }
+    function selectRule(item) {
+      const target = $('#rule-detail'); target.replaceChildren(element('h2','',item.name),element('p','detail-intro',item.description));
+      facts(target,[['Rule',item.rule_id],['Version',item.version],['Tactic',item.tactic],['Technique',item.technique_id],['Event types',item.event_types.join(', ')],['Default severity',item.severity],['Default confidence',item.confidence]]);
+      target.append(element('p','detail-intro',item.investigation));
+      const form=element('form','note-form'); const labelNode=element('label','','Rule settings JSON'); const input=element('textarea');
+      input.id='rule-settings'; labelNode.htmlFor=input.id; input.value=JSON.stringify(item.settings,null,2); input.maxLength=65536;
+      const submit=element('button','button primary','Save rule settings'); submit.type='submit';
+      form.append(labelNode,input,element('p','detail-intro','Supported fields: enabled, severity, confidence, allowlist. Authentication and repeated-connection rules also support threshold. Empty {} restores defaults. Allowlists accept executable_path, username, parent_name and destination_ip.'),submit);
+      form.addEventListener('submit',async event => { event.preventDefault(); if(submit.disabled)return; let settings; try { settings=JSON.parse(input.value); } catch { toast('Settings must be valid JSON',true); return; } const result=await mutate(submit,`/api/rules/${encodeURIComponent(item.rule_id)}`,'PATCH',settings,'Rule settings saved','Apply these rule settings?'); if(result)item.settings=settings; });
+      target.append(form);
+    }
+    async function renderProcessResponse(parent,key) {
+      const status=await getJSON('/api/response/status');
+      const box=section(parent,'Controlled process response');
+      if (!status.enabled) { box.append(element('p','detail-intro','Response actions are disabled in host configuration.')); return; }
+      const form=element('form','note-form'); const reason=element('input'); reason.placeholder='Investigation reason'; reason.required=true; reason.maxLength=512; reason.setAttribute('aria-label','Reason for process termination');
+      const password=element('input'); password.type='password'; password.autocomplete='current-password'; password.required=true; password.setAttribute('aria-label','Administrator password');
+      const submit=element('button','button danger','Authorize selected process termination'); submit.type='submit';
+      form.append(reason,password,submit,element('p','notice',status.rollback));
+      form.addEventListener('submit',async event => {
+        event.preventDefault(); if(submit.disabled)return; submit.disabled=true; const secret=password.value; password.value='';
+        try { const authorization=await post('/api/response/prepare',{instance_id:key,reason:reason.value,password:secret});
+          if(window.confirm(`Terminate PID ${authorization.target_pid}? This cannot be undone.`)) { const result=await post('/api/response/execute',{confirmation_token:authorization.confirmation_token,confirm:true}); toast(result.status); }
+        } catch(error) { toast(error.message,true); } finally { submit.disabled=false; }
+      }); box.append(form);
+    }
+    function renderOperations(response,scan,maintenance,jobs,audit) {
+      const status=$('#operations-status'); status.replaceChildren();
+      facts(status,[['Process response',response.enabled ? 'Enabled; password and confirmation required' : 'Disabled'],['Supported actions',response.supported_actions.join(', ')],['Unsupported actions',response.unsupported_actions.join(', ')]]);
+      status.append(element('p','notice',response.rollback));
+      const scanner=$('#scan-status'); scanner.replaceChildren();
+      facts(scanner,[['Scanning',scan.enabled ? (scan.available ? 'Available' : 'Optional YARA package unavailable') : 'Disabled'],['Rules configured',scan.rule_files],['File size limit',`${scan.max_bytes} bytes`],['Match timeout',`${scan.timeout_seconds}s`],['Allowed scope',scan.configured_paths.join(', ') || 'No paths configured']]);
+      $('#scan-form button').disabled=!scan.enabled || !scan.available || !scan.rule_files;
+      const database=$('#maintenance-status'); database.replaceChildren(); facts(database,[['Schema',maintenance.schema_version],['Storage',`${maintenance.storage_bytes} bytes`],['Retention',maintenance.retention_enabled ? `${maintenance.retention_days} days, resolved evidence only` : 'Deletion disabled'],['Last integrity result',maintenance.last_integrity_check],['Last retention',maintenance.last_retention]]);
+      database.append(element('p','detail-intro',maintenance.retention_scope)); $('#retention-run').disabled=!maintenance.retention_enabled;
+      const queue=$('#jobs-list'); queue.replaceChildren(element('p','detail-intro',`${jobs.queue_depth}/${jobs.queue_capacity} jobs queued · oldest queued ${Math.round(jobs.oldest_queued_seconds || 0)}s · ${jobs.workers} worker · ${jobs.worker_running ? 'running' : 'idle'}`));
+      for (const item of jobs.items) {
+        const box=record(item.kind,`${dateTime(item.created_at)} · ${item.status}`,item.payload);
+        if (['queued','running'].includes(item.status)) { let cancel; cancel=button('Request cancellation',() => mutate(cancel,`/api/jobs/${encodeURIComponent(item.job_id)}/cancel`,'POST',null,'Cancellation requested')); box.append(cancel); }
+        queue.append(box);
+      }
+      if(!jobs.items.length)queue.append(empty('No background jobs requested.'));
+      pager('jobs',jobs);
+      const history=$('#audit-list'); history.replaceChildren();
+      for (const item of audit.items) history.append(record(`${item.action} · ${item.result}`,`${dateTime(item.timestamp)} · ${item.actor} · ${item.target}`,{reason:item.reason,sequence:item.sequence,entry_hash:item.entry_hash}));
+      if(!audit.items.length)history.append(empty('No analyst actions recorded.'));
+      pager('audit',audit);
+    }
+    $('#ioc-import').addEventListener('submit',async event => { event.preventDefault(); const form=event.currentTarget; const result=await mutate(form.querySelector('button'),'/api/intelligence/import','POST',{format:$('#ioc-format').value,content:$('#ioc-content').value},'Indicators imported'); if(result)$('#ioc-content').value=''; });
+    $('#rule-test').addEventListener('submit',async event => { event.preventDefault(); const control=event.currentTarget.querySelector('button'); if(control.disabled)return; control.disabled=true; try { const result=await post('/api/rules/test',JSON.parse($('#rule-sample').value)); const target=$('#rule-test-result'); target.replaceChildren(element('p','detail-intro',`${result.detections.length} detections · sample was not persisted`)); for(const item of result.detections)target.append(record(item.rule_id,item.reason,item)); } catch(error) { toast(error.message,true); } finally { control.disabled=false; } });
+    $('#scan-form').addEventListener('submit',async event => { event.preventDefault(); await mutate(event.currentTarget.querySelector('button'),'/api/scans','POST',{path:$('#scan-path').value},'Scan queued'); });
+    for(const action of ['backup','integrity']) $(`#maintenance-${action}`).addEventListener('click',event => mutate(event.currentTarget,`/api/maintenance/${action}`,'POST',null,`${action} job queued`));
+    $('#retention-form').addEventListener('submit',async event => { event.preventDefault(); const password=$('#retention-password').value; $('#retention-password').value=''; await mutate($('#retention-run'),'/api/maintenance/retention','POST',{confirm:true,password},'Retention job queued','Archive and delete evidence eligible under the configured policy? Active incident evidence is preserved.'); });
     function renderCollectors() {
       const target = $('#collector-grid'); target.replaceChildren();
       const items = state.status?.collectors || [];
@@ -562,10 +697,13 @@
         const head = element('div','health-card-head'); head.append(element('h2','',item.collector_id.replaceAll('_',' ')),badge(healthState(item)));
         card.append(head);
         facts(card,[['Platform',item.platform],['Agent state',item.state],['Last successful scan',relative(item.last_success)],['Last duration',item.last_duration_seconds == null ? null : `${item.last_duration_seconds.toFixed(3)}s`],['Events generated',item.events_generated],['Processes inspected',item.collector_id.endsWith('_process') ? item.processes_inspected : null],['Inaccessible processes',item.collector_id.endsWith('_process') ? item.inaccessible_processes : null],['Collection errors',item.collection_errors]]);
+        facts(card,[['Seconds since success',item.seconds_since_success == null ? 'No success yet' : Math.round(item.seconds_since_success)],['Unavailable locations',(item.unavailable_locations || []).join(', ') || 'None reported']]);
+        if(item.capabilities && Object.keys(item.capabilities).length) evidence(card,item.capabilities);
         if (item.last_error) card.append(element('p','',`Last error: ${safeCollectorError(item.last_error)}`));
         target.append(card);
       }
       if (!items.length) target.append(empty('No collectors enabled.'));
+      const capabilities = section(target,'Optional telemetry sources'); evidence(capabilities,state.status?.capabilities || {});
     }
     function renderSettings() {
       const data = state.settings || {};
@@ -578,7 +716,7 @@
       about.append(element('p','detail-intro','RT-HID stores evidence locally and serves this dashboard on loopback. Collection is polling based and may miss short-lived processes or listeners. Alerts are indicators for investigation; the agent does not block or quarantine threats.'));
     }
     for (const item of document.querySelectorAll('#navigation button')) item.addEventListener('click',() => showView(item.dataset.view));
-    for (const view of ['alerts','incidents','processes','network','files']) {
+    for (const view of ['alerts','incidents','processes','network','files','persistence']) {
       for (const input of document.querySelectorAll(`#view-${view} .filters input, #view-${view} .filters select`)) {
         let timer;
         input.addEventListener(input.tagName === 'INPUT' ? 'input' : 'change',() => { clearTimeout(timer); timer = setTimeout(() => { state.offset[view] = 0; refresh(); },input.tagName === 'INPUT' ? 260 : 0); });

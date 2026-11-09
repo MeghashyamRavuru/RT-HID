@@ -91,6 +91,23 @@ class ProcessTelemetryTests(unittest.TestCase):
         config = HostConfig(host_id="host-1", **options)
         return cls("host-1", self.emitted.append, config)
 
+    def test_expensive_metadata_is_read_only_for_new_instances(self):
+        from unittest.mock import Mock
+        first = FakeProcess(1,100)
+        first.as_dict = Mock(return_value={'name':'worker','ppid':10,'exe':None,'username':'alice'})
+        self.processes = [first]
+        collector = self.collector()
+        collector.run_once()
+        first.as_dict.assert_not_called()
+        second = FakeProcess(2,101)
+        second.as_dict = Mock(return_value={'name':'worker','ppid':10,'exe':None,'username':'alice'})
+        self.processes.append(second)
+        collector.run_once()
+        second.as_dict.assert_called_once()
+        collector.run_once()
+        first.as_dict.assert_not_called()
+        second.as_dict.assert_called_once()
+
     def test_process_config_defaults_and_limits(self):
         config = HostConfig(host_id="host-1")
         config.validate()

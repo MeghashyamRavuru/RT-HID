@@ -4,11 +4,13 @@ import argparse
 import logging
 import platform
 import threading
+import json
 from pathlib import Path
 
 from .agent import HostAgent
 from .api import create_app
 from .config import HostConfig
+from .maintenance import validate_backup, restore_backup
 
 
 def build_config(args: argparse.Namespace) -> HostConfig:
@@ -32,9 +34,23 @@ def main() -> None:
     dashboard.add_argument("--port", type=int, dest="dashboard_port")
     sub.add_parser("alerts")
     sub.add_parser("incidents")
+    sub.add_parser('backup')
+    validate = sub.add_parser('validate-backup')
+    validate.add_argument('path')
+    restore = sub.add_parser('restore-backup')
+    restore.add_argument('source')
+    restore.add_argument('destination')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     config = build_config(args)
+    if args.command == 'validate-backup':
+        print(json.dumps(validate_backup(Path(args.path))))
+        return
+    if args.command == 'restore-backup':
+        if Path(args.destination).resolve() == config.database_path.resolve():
+            parser.error('restore to a new database path, validate it, then switch configuration while RT-HID is stopped')
+        print(json.dumps(restore_backup(Path(args.source),Path(args.destination))))
+        return
     agent = HostAgent(config)
     monitor: threading.Thread | None = None
     try:
@@ -44,6 +60,8 @@ def main() -> None:
             print(agent.database.list_alerts())
         elif args.command == "incidents":
             print(agent.database.list_incidents())
+        elif args.command == 'backup':
+            print(json.dumps(agent.maintenance.backup()))
         elif args.command == "monitor":
             agent.run_forever()
         elif args.command == "dashboard":

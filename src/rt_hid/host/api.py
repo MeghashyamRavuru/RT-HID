@@ -6,13 +6,14 @@ import threading
 import time
 from collections import defaultdict, deque
 from datetime import timedelta
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from flask import Flask, Response, abort, g, jsonify, redirect, render_template_string, request, session, url_for
 from werkzeug.exceptions import HTTPException
 
 from .agent import HostAgent
+from .advanced_api import register_advanced_routes
+from . import AGENT_VERSION
 
 
 PAGE = Path(__file__).with_name("dashboard.html").read_text(encoding="utf-8")
@@ -23,13 +24,15 @@ VALID_SEVERITIES = {"all", "informational", "low", "medium", "high", "critical"}
 VALID_ALERT_STATUSES = {"all", "new", "acknowledged", "resolved", "false_positive"}
 EVENT_KINDS = {
     "process": ("process_start", "process_stop"),
-    "network": ("network_listen",),
+    "network": ("network_listen", "network_connection"),
     "file": ("file_change",),
+    "persistence": ("persistence_change",),
 }
 EVENT_ACTIONS = {
     "process": {"all", "start", "stop"},
-    "network": {"all", "listen"},
+    "network": {"all", "listen", "connect"},
     "file": {"all", "modify", "delete", "create", "permission_change"},
+    "persistence": {"all", "modify", "delete", "create"},
 }
 
 
@@ -42,7 +45,7 @@ def create_app(agent: HostAgent) -> Flask:
         SESSION_COOKIE_SAMESITE="Strict",
         SESSION_COOKIE_SECURE=False,  # dashboard is restricted to local HTTP loopback
         PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
-        MAX_CONTENT_LENGTH=16 * 1024,
+        MAX_CONTENT_LENGTH=2 * 1024 * 1024,
     )
     failed_logins: dict[str, deque[float]] = defaultdict(deque)
     login_lock = threading.Lock()
@@ -79,6 +82,7 @@ def create_app(agent: HostAgent) -> Flask:
 
     @app.before_request
     def protect_resources():
+        g.audit_actor = 'admin' if logged_in() else 'anonymous'
         if request.endpoint == "login":
             return None
         if request.endpoint == "change_password":
@@ -102,6 +106,8 @@ def create_app(agent: HostAgent) -> Flask:
 
     @app.after_request
     def security_headers(response):
+        if request.method in {'POST','PUT','PATCH','DELETE'} and request.path.startswith('/api/'):
+            agent.audit.append('http_write',request.path,str(response.status_code),actor=getattr(g,'audit_actor','anonymous'))
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
@@ -115,6 +121,12 @@ def create_app(agent: HostAgent) -> Flask:
             f"script-src 'nonce-{nonce}'" if nonce else "script-src 'none'"
         )
         return response
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        if request.path.startswith('/api/'):
+            return jsonify({'error':'internal server error; check local application logs'}),500
+        return error
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
@@ -261,12 +273,8 @@ def create_app(agent: HostAgent) -> Flask:
 
     @app.get("/api/settings")
     def settings():
-        try:
-            app_version = version("rt-hid")
-        except PackageNotFoundError:
-            app_version = None
         return jsonify({
-            "version": app_version,
+            "version": AGENT_VERSION,
             "host_id": agent.config.host_id,
             "platform": agent.capabilities.__dict__,
             "database_path": str(agent.config.database_path),
@@ -275,6 +283,13 @@ def create_app(agent: HostAgent) -> Flask:
             "executable_hashing_enabled": agent.config.executable_hashing_enabled,
             "monitored_paths": [str(path) for path in agent.config.monitored_paths],
             "dashboard_host": agent.config.dashboard_host,
+            "persistence_enabled":agent.config.persistence_enabled,
+            "persistence_paths":[str(path) for path in agent.config.persistence_paths],
+            "threat_intelligence_enabled":agent.config.threat_intelligence_enabled,
+            "response_enabled":agent.config.response_enabled,
+            "retention_enabled":agent.config.retention_enabled,
+            "retention_days":agent.config.retention_days,
+            "network_destination_allowlist":agent.config.network_destination_allowlist,
         })
 
     @app.get("/api/incidents/<incident_id>")
@@ -341,4 +356,5 @@ def create_app(agent: HostAgent) -> Flask:
             abort(409, str(error))
         return jsonify({"status": restored, "alert_id": alert_id})
 
+    register_advanced_routes(app, agent)
     return app

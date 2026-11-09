@@ -20,6 +20,8 @@ EVENT_TYPES = {
     "system_snapshot",
     "collector_status",
     "security_change",
+    "persistence_change",
+    "file_scan",
 }
 SEVERITIES = {"informational", "low", "medium", "high", "critical"}
 OUTCOMES = {"success", "failure", "observed", "unknown"}
@@ -102,6 +104,8 @@ class CollectorStatus:
     events_generated: int = 0
     inaccessible_processes: int = 0
     collection_errors: int = 0
+    capabilities: dict[str, Any] = field(default_factory=dict)
+    unavailable_locations: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -123,6 +127,8 @@ class Detection:
     evidence: dict[str, Any]
     investigation: str
     host_id: str
+    rule_version: str = "1.0.0"
+    related_detection_ids: tuple[str, ...] = ()
 
     @classmethod
     def create(cls, **kwargs: Any) -> "Detection":

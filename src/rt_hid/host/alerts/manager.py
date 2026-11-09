@@ -24,15 +24,19 @@ class HostAlertManager:
         with self._lock:
             if detection.detection_id in self._seen:
                 return None
+            with self.database._lock:
+                if self.database.connection.execute("SELECT 1 FROM alerts WHERE json_extract(payload,'$.detection_id')=? LIMIT 1", (detection.detection_id,)).fetchone():
+                    return None
             self._remember(detection.detection_id)
             subject = (detection.evidence.get("source_ip") or detection.evidence.get("file_path")
                        or detection.evidence.get("target_account") or detection.evidence.get("service_name")
                        or detection.evidence.get("username") or detection.evidence.get("port")
                        or detection.evidence.get("process_name") or "host")
-            group = f"{detection.host_id}|{detection.rule_id}|{detection.evidence.get('process_identity') or subject}"
+            correlation_key = detection.evidence.get('correlation_key')
+            group = f"{detection.host_id}|{detection.rule_id}|{correlation_key or detection.evidence.get('process_identity') or subject}"
             now = _timestamp(detection.timestamp)
             previous = self._last_by_group.get(group)
-            if previous and now - previous < timedelta(seconds=self.config.alert_cooldown_seconds):
+            if previous and now - previous < timedelta(seconds=self.config.alert_cooldown_seconds) and not correlation_key:
                 return None
             self._last_by_group[group] = now
             incident_id = self._incident_id(group)
@@ -66,6 +70,8 @@ class HostAlertManager:
                 "state_history": state_history[-20:],
                 "tactic": detection.tactic,
                 "technique_id": detection.technique_id,
+                "rule_version": detection.rule_version,
+                "related_detection_ids": detection.related_detection_ids,
             }
             incident = {
                 "incident_id": incident_id,
@@ -81,7 +87,10 @@ class HostAlertManager:
                 "file_path": detection.evidence.get("file_path"),
                 "source_ip": detection.evidence.get("source_ip"),
                 "alert_ids": (existing.get("alert_ids", []) if existing else []) + [alert["alert_id"]],
-                "detection_ids": (existing.get("detection_ids", []) if existing else []) + [detection.detection_id],
+                "detection_ids": list(dict.fromkeys((existing.get("detection_ids", []) if existing else []) + [*detection.related_detection_ids, detection.detection_id])),
+                "correlation_explanation": detection.reason if correlation_key else None,
+                "event_ids": list(dict.fromkeys((existing.get("event_ids", []) if existing else []) + list(detection.event_ids))),
+                "lifecycle_events": (existing.get('lifecycle_events',[]) if existing else []) + [{'timestamp':detection.timestamp,'state':state,'action':'detection'}],
             }
             self.database.save_detection(detection)
             self.database.save_alert(alert)
