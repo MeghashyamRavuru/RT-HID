@@ -41,7 +41,16 @@ class FakeProcess:
     def info(self):
         if self.failure == "info":
             raise AccessDenied()
+        if self.failure == "gone_info":
+            raise NoSuchProcess()
+        if self.failure == "zombie_info":
+            raise ZombieProcess()
         return self._info
+
+    def create_time(self):
+        if self.failure == "gone_time":
+            raise NoSuchProcess()
+        return self._info["create_time"]
 
     def cmdline(self):
         if self.failure == "cmdline":
@@ -50,6 +59,10 @@ class FakeProcess:
             raise NoSuchProcess()
         if self.failure == "zombie":
             raise ZombieProcess()
+        if self.failure == "value_error_cmdline":
+            raise ValueError("--password=private-token")
+        if self.failure == "unexpected_cmdline":
+            raise RuntimeError("--password=private-token")
         return self.command
 
     def cwd(self):
@@ -63,10 +76,12 @@ class ProcessTelemetryTests(unittest.TestCase):
         self.processes = []
         self.emitted = []
         self.parents = {10: "shell"}
+        self.alive_pids = set()
         self.fake_psutil = SimpleNamespace(
             AccessDenied=AccessDenied, NoSuchProcess=NoSuchProcess,
             ZombieProcess=ZombieProcess, process_iter=lambda _attrs: list(self.processes),
             Process=lambda pid: SimpleNamespace(name=lambda: self.parents[pid]),
+            pid_exists=lambda pid: pid in self.alive_pids,
         )
         self.module_patch = patch.dict(sys.modules, {"psutil": self.fake_psutil})
         self.module_patch.start()
@@ -113,13 +128,13 @@ class ProcessTelemetryTests(unittest.TestCase):
                           FakeProcess(4, 1003, failure="zombie"),
                           FakeProcess(5, 1004, failure="cwd")]
         events = collector.run_once()
-        self.assertEqual(len(events), 4)
+        self.assertEqual(len(events), 2)
         self.assertIsNone(events[0].executable_path)
         self.assertIsNone(events[0].metadata["command_line"])
-        self.assertIsNone(events[2].metadata["working_directory"])
+        self.assertIsNone(events[1].metadata["working_directory"])
         self.assertEqual(collector.status.processes_inspected, 5)
         self.assertGreaterEqual(collector.status.inaccessible_processes, 4)
-        self.assertEqual(collector.status.events_generated, 4)
+        self.assertEqual(collector.status.events_generated, 2)
         self.assertEqual(collector.status.state, "running")
         self.assertIsNotNone(collector.status.last_duration_seconds)
         self.assertIsNotNone(collector.status.last_success)
@@ -132,6 +147,116 @@ class ProcessTelemetryTests(unittest.TestCase):
         self.processes = [FakeProcess(7, 1000, failure="info")]
         self.assertEqual(collector.run_once(), [])
         self.assertEqual(len(collector._known), 1)
+
+    def test_invalid_creation_times_preserve_known_process(self):
+        for cls in (LinuxProcessCollector, WindowsProcessCollector):
+            with self.subTest(collector=cls.__name__):
+                collector = self.collector(cls, executable_hashing_enabled=False)
+                self.processes = [FakeProcess(7, 1000)]
+                collector.run_once()
+                for invalid in ("not-a-time", "nan", "inf", -1, 1e30):
+                    with self.subTest(value=invalid):
+                        self.processes = [FakeProcess(7, invalid)]
+                        self.assertEqual(collector.run_once(), [])
+                        self.assertEqual(set(collector._known), {(7, 1000.0)})
+                        self.assertTrue(collector.status.last_error.startswith("creation_time: "))
+                        self.assertEqual(collector.status.collection_errors, 1)
+                self.processes = [FakeProcess(7, 1000)]
+                self.assertEqual(collector.run_once(), [])
+
+    def test_windows_zero_time_system_processes_are_skipped(self):
+        collector = self.collector(WindowsProcessCollector, executable_hashing_enabled=False)
+        self.processes = [FakeProcess(0, 0.0), FakeProcess(4, 0.0), FakeProcess(42, 1000)]
+        self.assertEqual(collector.run_once(), [])
+        self.assertEqual(collector.status.processes_inspected, 3)
+        self.assertEqual(collector.status.inaccessible_processes, 0)
+        self.assertEqual(collector.status.collection_errors, 0)
+        self.assertIsNone(collector.status.last_error)
+        self.assertEqual(set(collector._known), {(42, 1000.0)})
+        self.processes.append(FakeProcess(43, 1001))
+        self.assertEqual([event.process_id for event in collector.run_once()], [43])
+
+        self.processes.append(FakeProcess(99, 0.0))
+        self.assertEqual(collector.run_once(), [])
+        self.assertEqual(collector.status.last_error, "creation_time: ValueError")
+
+    def test_linux_zero_creation_time_remains_diagnostic(self):
+        collector = self.collector(LinuxProcessCollector, executable_hashing_enabled=False)
+        self.processes = [FakeProcess(0, 0.0)]
+        self.assertEqual(collector.run_once(), [])
+        self.assertEqual(collector.status.last_error, "creation_time: ValueError")
+
+    def test_missing_creation_time_and_process_exit_during_lookup(self):
+        collector = self.collector(WindowsProcessCollector, executable_hashing_enabled=False)
+        self.processes = [FakeProcess(8, 1000)]
+        collector.run_once()
+        for process, expected in (
+            (FakeProcess(8, None), "creation_time: ValueError"),
+            (FakeProcess(8, None, failure="gone_time"), "creation_time: NoSuchProcess"),
+            (FakeProcess(8, 1000, failure="gone_info"), "process_info: NoSuchProcess"),
+            (FakeProcess(8, 1000, failure="zombie_info"), "process_info: ZombieProcess"),
+            (FakeProcess(8, 1000, failure="info"), "process_info: AccessDenied"),
+        ):
+            with self.subTest(error=expected):
+                self.processes = [process]
+                self.assertEqual(collector.run_once(), [])
+                self.assertEqual(collector.status.last_error, expected)
+                self.assertEqual(set(collector._known), {(8, 1000.0)})
+                self.assertEqual(collector.status.inaccessible_processes, 1)
+                self.assertEqual(collector.status.collection_errors, 1)
+
+    def test_disappearing_new_process_does_not_leave_seen_identity(self):
+        collector = self.collector(executable_hashing_enabled=False)
+        collector.run_once()
+        self.processes = [FakeProcess(9, 1000, failure="gone")]
+        self.assertEqual(collector.run_once(), [])
+        self.assertEqual(collector.status.last_error, "command_line: NoSuchProcess")
+        self.assertNotIn((9, 1000.0), collector._known)
+        self.processes = [FakeProcess(9, 1000, command=["worker"])]
+        self.assertEqual([event.event_type for event in collector.run_once()], ["process_start"])
+
+    def test_temporarily_omitted_live_pid_does_not_emit_stop(self):
+        collector = self.collector(WindowsProcessCollector, executable_hashing_enabled=False)
+        self.processes = [FakeProcess(12, 1000)]
+        collector.run_once()
+        self.processes = []
+        self.alive_pids.add(12)
+        self.assertEqual(collector.run_once(), [])
+        self.assertEqual(set(collector._known), {(12, 1000.0)})
+        self.alive_pids.clear()
+        self.assertEqual([event.event_type for event in collector.run_once()], ["process_stop"])
+
+    def test_enumeration_value_error_is_sanitized_and_keeps_baseline(self):
+        collector = self.collector(WindowsProcessCollector, executable_hashing_enabled=False)
+        self.processes = [FakeProcess(12, 1000)]
+        collector.run_once()
+        previous_success = collector.status.last_success
+
+        def broken_iterator(_attrs):
+            yield FakeProcess(13, 1001)
+            raise ValueError("--token=private-token")
+
+        self.fake_psutil.process_iter = broken_iterator
+        self.assertEqual(collector.run_once(), [])
+        self.assertEqual(collector.status.last_error, "process_enumeration: ValueError")
+        self.assertEqual(collector.status.state, "degraded")
+        self.assertEqual(collector.status.last_success, previous_success)
+        self.assertEqual(set(collector._known), {(12, 1000.0)})
+        self.assertNotIn("private-token", str(collector.status.to_dict()))
+
+    def test_optional_value_error_is_sanitized_and_unexpected_error_degrades(self):
+        collector = self.collector(WindowsProcessCollector, executable_hashing_enabled=False)
+        collector.run_once()
+        self.processes = [FakeProcess(10, 1000, failure="value_error_cmdline")]
+        self.assertEqual(len(collector.run_once()), 1)
+        self.assertEqual(collector.status.last_error, "command_line: ValueError")
+        self.assertNotIn("private-token", str(collector.status.to_dict()))
+        self.assertEqual(collector.status.state, "running")
+        self.processes.append(FakeProcess(11, 1001, failure="unexpected_cmdline"))
+        self.assertEqual(collector.run_once(), [])
+        self.assertEqual(collector.status.last_error, "command_line: RuntimeError")
+        self.assertEqual(collector.status.state, "degraded")
+        self.assertNotIn("private-token", str(collector.status.to_dict()))
 
     def test_hash_generation_cache_size_limit_and_disabled_setting(self):
         with tempfile.TemporaryDirectory() as directory:

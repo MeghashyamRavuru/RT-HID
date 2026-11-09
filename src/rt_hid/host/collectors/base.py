@@ -32,7 +32,9 @@ class Collector(ABC):
                 self.sink(event)
             self.status = replace(self.status, available=self.status.available if self.status.last_error else True,
                                   state="running" if self.status.available or not self.status.last_error else "degraded",
-                                  last_success=utc_now(), last_duration_seconds=monotonic() - started,
+                                  last_success=(self.status.last_success if self.status.last_error and not self.status.available
+                                                else utc_now()),
+                                  last_duration_seconds=monotonic() - started,
                                   events_generated=len(events),
                                   detail=self.status.detail if self.status.last_error else f"{len(events)} event(s)")
             return events

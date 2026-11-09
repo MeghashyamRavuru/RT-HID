@@ -6,12 +6,18 @@ import secrets
 import sqlite3
 import threading
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .models import CollectorStatus, Detection, HostEvent, utc_now
+
+
+def _like_pattern(query: str) -> str:
+    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
 
 
 class HostDatabase:
@@ -282,7 +288,8 @@ class HostDatabase:
         return [json.loads(row["payload"]) for row in rows]
 
     def page_incidents(
-        self, limit: int = 25, offset: int = 0, state: str = "all", query: str = ""
+        self, limit: int = 25, offset: int = 0, state: str = "all", query: str = "",
+        severity: str = "all", order: str = "newest",
     ) -> dict[str, Any]:
         limit = max(1, min(limit, 100))
         offset = max(0, offset)
@@ -291,6 +298,9 @@ class HostDatabase:
         if state != "all":
             clauses.append("state = ?")
             params.append(state)
+        if severity != "all":
+            clauses.append("json_extract(payload, '$.severity') = ?")
+            params.append(severity)
         if query:
             clauses.append("(payload LIKE ? ESCAPE '\\' OR EXISTS ("
                            "SELECT 1 FROM alerts WHERE alerts.incident_id = incidents.incident_id "
@@ -301,7 +311,9 @@ class HostDatabase:
         with self._lock:
             total = self.connection.execute("SELECT COUNT(*) FROM incidents" + where, params).fetchone()[0]
             rows = self.connection.execute(
-                "SELECT payload FROM incidents" + where + " ORDER BY last_seen DESC LIMIT ? OFFSET ?",
+                "SELECT payload FROM incidents" + where +
+                (" ORDER BY last_seen ASC" if order == "oldest" else " ORDER BY last_seen DESC") +
+                " LIMIT ? OFFSET ?",
                 (*params, limit, offset),
             ).fetchall()
             items = []
@@ -323,6 +335,8 @@ class HostDatabase:
                 "limit": limit, "offset": offset}
 
     def incident_counts(self) -> dict[str, Any]:
+        today = datetime.now(timezone.utc).date()
+        first_day = (today - timedelta(days=6)).isoformat()
         with self._lock:
             rows = self.connection.execute(
                 "SELECT state, COUNT(*) AS count FROM incidents GROUP BY state"
@@ -336,14 +350,84 @@ class HostDatabase:
             ).fetchall()
             activity_rows = self.connection.execute(
                 "SELECT substr(first_seen, 1, 10) AS day, COUNT(*) AS count FROM incidents "
-                "WHERE first_seen >= date('now', '-6 days') GROUP BY day ORDER BY day"
+                "WHERE first_seen >= ? GROUP BY day ORDER BY day", (first_day,)
+            ).fetchall()
+            category_rows = self.connection.execute(
+                "SELECT COALESCE(json_extract(payload, '$.category'), 'uncategorized') AS category, "
+                "COUNT(*) AS count FROM incidents GROUP BY category ORDER BY count DESC LIMIT 8"
             ).fetchall()
         states = {row["state"]: row["count"] for row in rows}
         return {"incidents": sum(states.values()), "open_incidents": sum(
             count for state, count in states.items() if state != "resolved"),
             "alerts": alerts, "high_alerts": high_alerts,
             "severity_counts": {row["severity"]: row["count"] for row in severity_rows},
-            "activity": [{"day": row["day"], "count": row["count"]} for row in activity_rows]}
+            "activity": [{"day": row["day"], "count": row["count"]} for row in activity_rows],
+            "category_counts": {row["category"]: row["count"] for row in category_rows},
+            "activity_timezone": "UTC",
+            "severity_scope": "alerts excluding false positives"}
+
+    def page_alerts(self, limit: int = 25, offset: int = 0, query: str = "",
+                    severity: str = "all", status: str = "all", rule: str = "",
+                    order: str = "newest") -> dict[str, Any]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if severity != "all":
+            clauses.append("severity = ?")
+            params.append(severity)
+        if status != "all":
+            clauses.append("status = ?")
+            params.append(status)
+        if rule:
+            clauses.append("json_extract(payload, '$.rule_id') = ?")
+            params.append(rule)
+        if query:
+            clauses.append("payload LIKE ? ESCAPE '\\'")
+            params.append(_like_pattern(query))
+        return self._page_payloads("alerts", "last_seen", clauses, params, limit, offset, order)
+
+    def page_events(self, event_types: tuple[str, ...], limit: int = 25, offset: int = 0,
+                    query: str = "", action: str = "all", order: str = "newest") -> dict[str, Any]:
+        placeholders = ",".join("?" for _ in event_types)
+        clauses = [f"event_type IN ({placeholders})"]
+        params: list[Any] = list(event_types)
+        if action != "all":
+            clauses.append("json_extract(payload, '$.action') = ?")
+            params.append(action)
+        if query:
+            clauses.append("payload LIKE ? ESCAPE '\\'")
+            params.append(_like_pattern(query))
+        page = self._page_payloads("host_events", "timestamp", clauses, params, limit, offset, order)
+        ids = [item["event_id"] for item in page["items"]]
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            with self._lock:
+                related = self.connection.execute(
+                    "SELECT DISTINCT evidence.value AS event_id, alerts.incident_id "
+                    "FROM detections JOIN json_each(detections.payload, '$.event_ids') AS evidence "
+                    "JOIN alerts ON json_extract(alerts.payload, '$.detection_id') = detections.detection_id "
+                    f"WHERE evidence.value IN ({placeholders})", ids,
+                ).fetchall()
+            links: dict[str, list[str]] = {}
+            for row in related:
+                links.setdefault(row["event_id"], []).append(row["incident_id"])
+            for item in page["items"]:
+                item["related_incident_ids"] = links.get(item["event_id"], [])
+        return page
+
+    def _page_payloads(self, table: str, timestamp: str, clauses: list[str], params: list[Any],
+                       limit: int, offset: int, order: str) -> dict[str, Any]:
+        # Table and order column are fixed by internal callers; all user values are bound.
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        direction = "ASC" if order == "oldest" else "DESC"
+        with self._lock:
+            total = self.connection.execute(f"SELECT COUNT(*) FROM {table}" + where, params).fetchone()[0]
+            rows = self.connection.execute(
+                f"SELECT payload FROM {table}" + where +
+                f" ORDER BY {timestamp} {direction} LIMIT ? OFFSET ?",
+                (*params, limit, offset),
+            ).fetchall()
+        return {"items": [json.loads(row["payload"]) for row in rows],
+                "total": total, "limit": limit, "offset": offset}
 
     def get_incident(self, incident_id: str) -> dict[str, Any] | None:
         with self._lock:

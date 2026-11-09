@@ -241,7 +241,7 @@ class HostHidsTests(unittest.TestCase):
                                  "new")
                 self.assertEqual(client.post(f"/api/incidents/{incident_id}/undo-state", headers=headers).status_code, 409)
                 self.assertEqual(client.get("/api/incidents/missing").status_code, 404)
-                self.assertIn(b"Incident details", client.get("/").data)
+                self.assertIn(b"Investigation detail", client.get("/").data)
                 agent.database.set_admin_password("another-local-admin-password")
                 self.assertEqual(client.get("/api/status").status_code, 401)
             finally:

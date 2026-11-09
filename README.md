@@ -65,7 +65,13 @@ Open `http://127.0.0.1:5000` on that same computer and sign in. The dashboard an
 
 HTTP API clients must keep the login session cookie and send the `csrf_token` from `GET /api/session` as the `X-CSRF-Token` header on POST requests. Initial password setup must be completed in a browser before API access. Use the same `--config` option for all commands when using a custom configuration.
 
-The dashboard shows incident totals, seven-day activity, alert severity, and collector health. Browse all incidents with pagination, search and filter by state, then open one to inspect affected files, related alerts, detection rationale, source events, and complete stored evidence. Add investigation notes, export an incident as JSON, mark an alert as a false positive, or acknowledge and resolve an incident from the detail view. Undo controls restore the previous incident state or reverse a false-positive mark, including after a dashboard restart. To run without the web UI:
+The console has Overview, Alerts, Incidents, Processes, Network, File integrity, Collectors, and Settings / About views. Overview shows stored counts, seven UTC days of new incidents, alert severity excluding false positives, detection categories, and recent records. The collector center distinguishes healthy, degraded, unavailable, and stopped monitoring, including partial scan errors.
+
+Alerts and incidents support search, filters, sorting, pagination, and evidence review. Incident investigation includes related alerts, a timeline, source events, affected assets, notes, JSON export, acknowledgement, resolution, undo, and false-positive actions. Process, network, and file views show **stored events**, not complete live inventories. The network view covers newly observed local listeners, not outbound traffic. The file view covers configured monitored paths, not the whole filesystem. Process command lines are stored with best-effort redaction and shown only in the protected dashboard.
+
+The new authenticated `GET /api/alert-page` and `GET /api/event-page` endpoints return paginated `{items,total,limit,offset}` objects. `GET /api/settings` returns read-only configuration summary without authentication secrets. Existing `/api/alerts`, `/api/incidents`, `/api/overview`, incident actions, CSRF requirements, and session behavior remain available. New explorer requests accept `limit` (1–100), `offset` (0–1,000,000), `order` (`newest` or `oldest`), and up to 100 search characters. Use `kind=process`, `kind=network`, or `kind=file` for event pages.
+
+To run without the web UI:
 
 ```bash
 python -m rt_hid.host.cli monitor

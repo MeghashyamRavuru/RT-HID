@@ -6,9 +6,11 @@ import threading
 import time
 from collections import defaultdict, deque
 from datetime import timedelta
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from flask import Flask, Response, abort, g, jsonify, redirect, render_template_string, request, session, url_for
+from werkzeug.exceptions import HTTPException
 
 from .agent import HostAgent
 
@@ -17,6 +19,18 @@ PAGE = Path(__file__).with_name("dashboard.html").read_text(encoding="utf-8")
 LOGIN_PAGE = Path(__file__).with_name("login.html").read_text(encoding="utf-8")
 CHANGE_PASSWORD_PAGE = Path(__file__).with_name("change_password.html").read_text(encoding="utf-8")
 VALID_STATES = {"all", "new", "updated", "acknowledged", "resolved"}
+VALID_SEVERITIES = {"all", "informational", "low", "medium", "high", "critical"}
+VALID_ALERT_STATUSES = {"all", "new", "acknowledged", "resolved", "false_positive"}
+EVENT_KINDS = {
+    "process": ("process_start", "process_stop"),
+    "network": ("network_listen",),
+    "file": ("file_change",),
+}
+EVENT_ACTIONS = {
+    "process": {"all", "start", "stop"},
+    "network": {"all", "listen"},
+    "file": {"all", "modify", "delete", "create", "permission_change"},
+}
 
 
 def create_app(agent: HostAgent) -> Flask:
@@ -40,6 +54,28 @@ def create_app(agent: HostAgent) -> Flask:
     def valid_csrf(token: str) -> bool:
         expected = session.get("csrf_token")
         return bool(expected and token and hmac.compare_digest(expected, token))
+
+    def page_parameters() -> tuple[int, int, str, str]:
+        try:
+            limit = int(request.args.get("limit", "25"))
+            offset = int(request.args.get("offset", "0"))
+        except ValueError:
+            abort(400, "invalid pagination")
+        if not 1 <= limit <= 100 or not 0 <= offset <= 1_000_000:
+            abort(400, "invalid pagination")
+        order = request.args.get("order", "newest")
+        if order not in {"newest", "oldest"}:
+            abort(400, "invalid sort order")
+        query = request.args.get("q", "").strip()
+        if len(query) > 100:
+            abort(400, "search query is too long")
+        return limit, offset, order, query
+
+    @app.errorhandler(HTTPException)
+    def api_errors(error: HTTPException):
+        if request.path.startswith("/api/"):
+            return jsonify({"error": error.description}), error.code
+        return error
 
     @app.before_request
     def protect_resources():
@@ -119,7 +155,9 @@ def create_app(agent: HostAgent) -> Flask:
                 with login_lock:
                     failed_logins[address].append(now)
                 error = "Incorrect password."
-        return render_template_string(LOGIN_PAGE, csrf_token=csrf_token, error=error,
+        g.script_nonce = secrets.token_urlsafe(24)
+        login_html = LOGIN_PAGE.replace("<script>", f'<script nonce="{g.script_nonce}">')
+        return render_template_string(login_html, csrf_token=csrf_token, error=error,
                                       first_login=first_login), (401 if error else 200)
 
     @app.route("/change-password", methods=["GET", "POST"])
@@ -146,7 +184,9 @@ def create_app(agent: HostAgent) -> Flask:
                     session["csrf_token"] = secrets.token_urlsafe(32)
                     session.permanent = True
                     return redirect(url_for("index"))
-        return render_template_string(CHANGE_PASSWORD_PAGE, csrf_token=session["csrf_token"],
+        g.script_nonce = secrets.token_urlsafe(24)
+        password_html = CHANGE_PASSWORD_PAGE.replace("<script>", f'<script nonce="{g.script_nonce}">')
+        return render_template_string(password_html, csrf_token=session["csrf_token"],
                                       error=error), (400 if error else 200)
 
     @app.post("/logout")
@@ -181,15 +221,61 @@ def create_app(agent: HostAgent) -> Flask:
 
     @app.get("/api/incident-page")
     def incident_page():
+        limit, offset, order, query = page_parameters()
         state = request.args.get("state", "all")
         if state not in VALID_STATES:
             abort(400, "invalid incident state")
+        severity = request.args.get("severity", "all")
+        if severity not in VALID_SEVERITIES:
+            abort(400, "invalid severity")
         return jsonify(agent.database.page_incidents(
-            limit=request.args.get("limit", 25, type=int),
-            offset=request.args.get("offset", 0, type=int),
+            limit=limit, offset=offset,
             state=state,
-            query=request.args.get("q", ""),
+            severity=severity, order=order, query=query,
         ))
+
+    @app.get("/api/alert-page")
+    def alert_page():
+        limit, offset, order, query = page_parameters()
+        severity = request.args.get("severity", "all")
+        alert_status = request.args.get("status", "all")
+        rule = request.args.get("rule", "").strip()
+        if severity not in VALID_SEVERITIES or alert_status not in VALID_ALERT_STATUSES or len(rule) > 100:
+            abort(400, "invalid alert filter")
+        return jsonify(agent.database.page_alerts(
+            limit=limit, offset=offset, order=order, query=query,
+            severity=severity, status=alert_status, rule=rule,
+        ))
+
+    @app.get("/api/event-page")
+    def event_page():
+        limit, offset, order, query = page_parameters()
+        kind = request.args.get("kind", "")
+        action = request.args.get("action", "all")
+        if kind not in EVENT_KINDS or action not in EVENT_ACTIONS[kind]:
+            abort(400, "invalid event filter")
+        return jsonify(agent.database.page_events(
+            event_types=EVENT_KINDS[kind], limit=limit, offset=offset,
+            query=query, action=action, order=order,
+        ))
+
+    @app.get("/api/settings")
+    def settings():
+        try:
+            app_version = version("rt-hid")
+        except PackageNotFoundError:
+            app_version = None
+        return jsonify({
+            "version": app_version,
+            "host_id": agent.config.host_id,
+            "platform": agent.capabilities.__dict__,
+            "database_path": str(agent.config.database_path),
+            "enabled_collectors": sorted(agent.config.enabled_collectors),
+            "process_interval_seconds": agent.config.process_interval_seconds,
+            "executable_hashing_enabled": agent.config.executable_hashing_enabled,
+            "monitored_paths": [str(path) for path in agent.config.monitored_paths],
+            "dashboard_host": agent.config.dashboard_host,
+        })
 
     @app.get("/api/incidents/<incident_id>")
     def incident_detail(incident_id: str):

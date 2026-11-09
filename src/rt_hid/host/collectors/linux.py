@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import platform
 import re
 import stat
@@ -92,20 +93,63 @@ class LinuxProcessCollector(Collector):
         events: list[HostEvent] = []
         inspected = identified = inaccessible = errors = 0
         error_summary: str | None = None
+        unexpected_error = False
         hashes_remaining = self.config.process_hashes_per_scan
-        for process in psutil.process_iter(["pid", "ppid", "name", "exe", "username", "create_time"]):
+
+        def report(stage: str, exc: Exception) -> None:
+            nonlocal errors, error_summary, unexpected_error
+            errors += 1
+            error_summary = f"{stage}: {_safe_process_error_type(exc)}"
+            if not isinstance(exc, (psutil.AccessDenied, psutil.NoSuchProcess,
+                                    psutil.ZombieProcess, OSError, ValueError,
+                                    TypeError, OverflowError, KeyError)):
+                unexpected_error = True
+
+        try:
+            process_iterator = iter(psutil.process_iter(
+                ["pid", "ppid", "name", "exe", "username", "create_time"]
+            ))
+        except Exception as exc:
+            report("process_enumeration", exc)
+            self.status = replace(self.status, available=False, processes_inspected=0,
+                                  inaccessible_processes=0, collection_errors=errors,
+                                  last_error=error_summary, detail="process enumeration failed")
+            return []
+        while True:
+            try:
+                process = next(process_iterator)
+            except StopIteration:
+                break
+            except Exception as exc:
+                report("process_enumeration", exc)
+                self.status = replace(self.status, available=False, processes_inspected=inspected,
+                                      inaccessible_processes=inaccessible, collection_errors=errors,
+                                      last_error=error_summary, detail="process enumeration failed")
+                return []
             inspected += 1
             identity: tuple[int, float] | None = None
+            stage = "process_info"
             try:
                 inaccessible_process = False
                 info = process.info
+                stage = "pid"
                 pid = int(info["pid"])
+                if pid < 0:
+                    raise ValueError("invalid PID")
+                stage = "creation_time"
                 created_value = info.get("create_time")
                 if created_value is None:
                     created_value = process.create_time()
-                created = float(created_value)
-                if created <= 0:
+                if created_value is None:
                     raise ValueError("missing process creation time")
+                created = float(created_value)
+                if self.status.platform == "windows" and pid in (0, 4) and created == 0.0:
+                    # Windows Idle/System can report a sentinel zero creation time.
+                    # They have no reliable (PID, creation time) identity to track.
+                    continue
+                if not math.isfinite(created) or created <= 0:
+                    raise ValueError("invalid process creation time")
+                created_at = datetime.fromtimestamp(created, timezone.utc).isoformat()
                 identified += 1
                 identity = (pid, created)
                 if identity in current:
@@ -116,45 +160,63 @@ class LinuxProcessCollector(Collector):
                         current[identity] = self._known[identity]
                     continue
 
-                ppid = info.get("ppid")
+                ppid = None
                 parent_name = None
-                if ppid is not None:
+                stage = "parent_pid"
+                if info.get("ppid") is not None:
                     try:
-                        parent_name = psutil.Process(int(ppid)).name()
-                    except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess, OSError, ValueError):
-                        pass
+                        ppid = int(info["ppid"])
+                        if ppid < 0:
+                            raise ValueError("invalid parent PID")
+                    except (TypeError, ValueError, OverflowError) as exc:
+                        report("parent_pid", exc)
+                        ppid = None
+                if ppid is not None:
+                    stage = "parent_name"
+                    try:
+                        parent_name = psutil.Process(ppid).name()
+                    except (psutil.AccessDenied, psutil.NoSuchProcess,
+                            psutil.ZombieProcess, OSError, ValueError) as exc:
+                        report("parent_name", exc)
                 command_line = None
                 cwd = None
+                stage = "command_line"
                 try:
                     command_line = _redact_command_line(process.cmdline(), self.config.process_command_line_max_length)
-                except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess, OSError):
+                except (psutil.NoSuchProcess, psutil.ZombieProcess):
+                    raise
+                except (psutil.AccessDenied, OSError, ValueError) as exc:
                     inaccessible_process = True
+                    report(stage, exc)
+                stage = "working_directory"
                 try:
                     cwd = process.cwd()
-                except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess, OSError):
+                except (psutil.NoSuchProcess, psutil.ZombieProcess):
+                    raise
+                except (psutil.AccessDenied, OSError, ValueError) as exc:
                     inaccessible_process = True
+                    report(stage, exc)
                 if inaccessible_process:
                     inaccessible += 1
 
+                stage = "process_metadata"
                 executable = info.get("exe")
                 digest = None
                 hash_error = None
+                stage = "executable_hash"
                 if executable and self.config.executable_hashing_enabled:
                     digest, hash_error, used_budget = self._hash_executable(str(executable), hashes_remaining)
                     hashes_remaining -= used_budget
                     if hash_error and hash_error != "scan budget reached":
                         errors += 1
-                        error_summary = f"executable hash: {hash_error}"
-                try:
-                    created_at = datetime.fromtimestamp(created, timezone.utc).isoformat()
-                except (OverflowError, ValueError, OSError):
-                    created_at = None
+                        error_summary = f"executable_hash: {hash_error}"
                 metadata = {"create_time": created,
                             "created_at": created_at,
                             "parent_name": parent_name, "command_line": command_line,
                             "working_directory": cwd, "executable_sha256": digest,
                             "executable_hash_error": hash_error}
                 current[identity] = {"created_at": created_at}
+                stage = "event_build"
                 events.append(HostEvent.create(
                     self.host_id, "process_start", "psutil", process_id=pid,
                     parent_process_id=ppid, process_name=info.get("name"),
@@ -164,8 +226,7 @@ class LinuxProcessCollector(Collector):
                 ))
             except Exception as exc:  # isolate unexpected per-process failures as well
                 inaccessible += 1
-                errors += 1
-                error_summary = f"process inspection: {type(exc).__name__}"
+                report(stage, exc)
                 if identity is not None and identity not in self._known:
                     current.pop(identity, None)
                 # Preserve known instances if this PID cannot be inspected this scan.
@@ -175,15 +236,29 @@ class LinuxProcessCollector(Collector):
                         current[identity] = metadata
                 continue
         if self._initialized:
+            current_pids = {pid for pid, _created in current}
             for (pid, created), metadata in self._known.items():
                 if (pid, created) not in current:
-                    events.append(HostEvent.create(self.host_id, "process_stop", "psutil",
-                                                   process_id=pid, action="stop", outcome="observed",
-                                                   metadata={"create_time": created,
-                                                             "created_at": metadata.get("created_at")}))
+                    if pid not in current_pids:
+                        try:
+                            if psutil.pid_exists(pid):
+                                current[(pid, created)] = metadata
+                                continue
+                        except Exception as exc:
+                            report("process_liveness", exc)
+                            current[(pid, created)] = metadata
+                            continue
+                    try:
+                        events.append(HostEvent.create(self.host_id, "process_stop", "psutil",
+                                                       process_id=pid, action="stop", outcome="observed",
+                                                       metadata={"create_time": created,
+                                                                 "created_at": metadata.get("created_at")}))
+                    except Exception as exc:
+                        report("stop_event", exc)
+                        current[(pid, created)] = metadata
         self._known = current
         self._initialized = True
-        functional = not inspected or identified > 0
+        functional = (not inspected or identified > 0) and not unexpected_error
         self.status = replace(self.status, available=functional, processes_inspected=inspected,
                               inaccessible_processes=inaccessible, collection_errors=errors,
                               last_error=error_summary,
@@ -191,8 +266,8 @@ class LinuxProcessCollector(Collector):
         return events
 
     def _hash_executable(self, executable: str, remaining: int) -> tuple[str | None, str | None, int]:
-        path = Path(executable)
         try:
+            path = Path(executable)
             before = path.stat()
             if not path.is_file():
                 return None, "not a regular file", 0
@@ -221,7 +296,19 @@ class LinuxProcessCollector(Collector):
                 self._hash_cache.popitem(last=False)
             return result, None, 1
         except (OSError, ValueError) as exc:
-            return None, type(exc).__name__, 1
+            return None, _safe_process_error_type(exc), 1
+
+
+_SAFE_PROCESS_ERROR_TYPES = {
+    "AccessDenied", "NoSuchProcess", "ZombieProcess", "ValueError", "TypeError",
+    "OverflowError", "KeyError", "OSError", "FileNotFoundError", "PermissionError",
+    "RuntimeError", "AttributeError",
+}
+
+
+def _safe_process_error_type(exc: Exception) -> str:
+    name = type(exc).__name__
+    return name if name in _SAFE_PROCESS_ERROR_TYPES else "UnexpectedError"
 
 
 _SECRET_ARGUMENT = re.compile(r"(?i)(?<![\w])(password|passwd|token|api[_-]?key|secret|client[_-]?secret|access[_-]?key)([=:])[^\s]+")
