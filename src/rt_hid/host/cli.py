@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import getpass
 import logging
 import platform
 import threading
@@ -22,7 +21,7 @@ def build_config(args: argparse.Namespace) -> HostConfig:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Standalone local RT-NID-ML host IDS")
+    parser = argparse.ArgumentParser(description="Standalone local RT-HID host IDS")
     parser.add_argument("--config", help="JSON host configuration path")
     parser.add_argument("--host-id")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -33,7 +32,6 @@ def main() -> None:
     dashboard.add_argument("--port", type=int, dest="dashboard_port")
     sub.add_parser("alerts")
     sub.add_parser("incidents")
-    sub.add_parser("set-password", help="Set or rotate the local dashboard admin password")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     config = build_config(args)
@@ -46,21 +44,9 @@ def main() -> None:
             print(agent.database.list_alerts())
         elif args.command == "incidents":
             print(agent.database.list_incidents())
-        elif args.command == "set-password":
-            password = getpass.getpass("New admin password (at least 12 characters): ")
-            confirmation = getpass.getpass("Confirm admin password: ")
-            if password != confirmation:
-                parser.error("passwords do not match")
-            try:
-                agent.database.set_admin_password(password)
-            except ValueError as error:
-                parser.error(str(error))
-            print("Admin password saved. Existing browser sessions are signed out.")
         elif args.command == "monitor":
             agent.run_forever()
         elif args.command == "dashboard":
-            if not agent.database.has_admin_password():
-                parser.error("set an admin password first: python -m rt_nid_ml.host.cli set-password")
             host = args.dashboard_host or config.dashboard_host
             if host not in {"127.0.0.1", "::1", "localhost"}:
                 parser.error("dashboard must bind to loopback; use a local browser or an HTTPS reverse proxy")

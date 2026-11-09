@@ -1,8 +1,6 @@
-# RT-NID-ML: local host intrusion detection
+# RT-HID: local host intrusion detection
 
-RT-NID-ML runs on an individual Ubuntu/Linux or Windows computer. It collects local security signals, applies explainable detection rules, stores evidence and incidents in a local SQLite database, and shows alerts on a dashboard bound to `127.0.0.1`. It does not require a central server or send events elsewhere. Despite the historical repository name, the current detector does not use machine learning.
-
-The [project direction note](PROJECT_DIRECTION.md) explains the earlier network IDS work and why this repository now focuses on the host agent.
+RT-HID runs on an individual Ubuntu/Linux or Windows computer. It collects local security signals, applies explainable detection rules, stores evidence and incidents in a local SQLite database, and shows alerts on a dashboard bound to `127.0.0.1`. It does not require a central server or send events elsewhere. The current detector does not use machine learning.
 
 ## What it monitors
 
@@ -46,25 +44,24 @@ The Windows dependency `pywin32` is installed automatically on Windows. Reading 
 Start the monitor and local dashboard together:
 
 ```bash
-python -m rt_nid_ml.host.cli set-password
-python -m rt_nid_ml.host.cli dashboard
+python -m rt_hid.host.cli dashboard
 ```
 
-The first command prompts for a local admin password of at least 12 characters. Run it again to rotate the password; that signs out existing browser sessions. The dashboard will refuse to start until a password is set.
+On a new database, sign in with username `admin` and password `admin`. The first login sends you to a required password change. Choose a new password of at least 12 characters before the dashboard or API becomes available. After that, the default password no longer works.
 
 Open `http://127.0.0.1:5000` on that same computer and sign in. The dashboard and all HTTP API endpoints require login. Sessions expire after eight hours, write actions require a CSRF token, and repeated failed logins are temporarily blocked. The dashboard only binds to loopback; use a local browser. The host's SQLite database contains the password hash and session signing secret, so protect the database file with operating-system permissions.
 
-HTTP API clients must keep the login session cookie and send the `csrf_token` from `GET /api/session` as the `X-CSRF-Token` header on POST requests. The password setup command uses the same database as the dashboard; pass the same `--config` option to both commands when using a custom configuration.
+HTTP API clients must keep the login session cookie and send the `csrf_token` from `GET /api/session` as the `X-CSRF-Token` header on POST requests. Initial password setup must be completed in a browser before API access. Use the same `--config` option for all commands when using a custom configuration.
 
 The dashboard shows incident totals, seven-day activity, alert severity, and collector health. Browse all incidents with pagination, search and filter by state, then open one to inspect affected files, related alerts, detection rationale, source events, and complete stored evidence. Add investigation notes, export an incident as JSON, mark an alert as a false positive, or acknowledge and resolve an incident from the detail view. Undo controls restore the previous incident state or reverse a false-positive mark, including after a dashboard restart. To run without the web UI:
 
 ```bash
-python -m rt_nid_ml.host.cli monitor
+python -m rt_hid.host.cli monitor
 ```
 
 Other commands are `status`, `alerts`, and `incidents`. Pass `--config config/host_ids.json` before the command to use the sample Linux configuration. Without a config file, the agent uses the machine hostname as its host ID and chooses platform defaults. Its database is `data/host_ids.sqlite3`; this runtime data is ignored by Git.
 
-Example Linux service files are in `packaging/`. The supplied systemd unit expects a checkout at `/opt/rt-nid-ml` and config at `/etc/rt-nid-ml/host_ids.json`; edit those paths for another location. Set the password with that same config and database before starting the service. The service runs the monitor and dashboard locally.
+Example Linux service files are in `packaging/`. The supplied systemd unit expects a checkout at `/opt/rt-hid` and config at `/etc/rt-hid/host_ids.json`; edit those paths for another location. The service runs the monitor and dashboard locally. Complete the first login in a browser on the host.
 
 ## Limits
 

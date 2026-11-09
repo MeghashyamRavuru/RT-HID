@@ -234,6 +234,14 @@ class HostDatabase:
                 (secrets.token_hex(16),),
             )
 
+    def initialize_admin_password(self, password: str) -> bool:
+        """Set the first password only while the default login is still active."""
+        with self._lock:
+            if self.has_admin_password():
+                return False
+            self.set_admin_password(password)
+            return True
+
     def verify_admin_password(self, password: str) -> bool:
         if len(password) > 1024:
             return False

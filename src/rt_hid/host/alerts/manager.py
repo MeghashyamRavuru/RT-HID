@@ -110,6 +110,7 @@ class HostAlertManager:
 
     @staticmethod
     def _incident_id(group: str) -> str:
+        # Keep the original UUID namespace so existing incident groups retain their IDs.
         return uuid.uuid5(uuid.NAMESPACE_URL, f"rt-nid-ml:{group}").hex
 
 

@@ -15,6 +15,7 @@ from .agent import HostAgent
 
 PAGE = Path(__file__).with_name("dashboard.html").read_text(encoding="utf-8")
 LOGIN_PAGE = Path(__file__).with_name("login.html").read_text(encoding="utf-8")
+CHANGE_PASSWORD_PAGE = Path(__file__).with_name("change_password.html").read_text(encoding="utf-8")
 VALID_STATES = {"all", "new", "updated", "acknowledged", "resolved"}
 
 
@@ -22,7 +23,7 @@ def create_app(agent: HostAgent) -> Flask:
     app = Flask(__name__)
     app.secret_key = agent.database.session_secret()
     app.config.update(
-        SESSION_COOKIE_NAME="rt_nid_ml_session",
+        SESSION_COOKIE_NAME="rt_hid_session",
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Strict",
         SESSION_COOKIE_SECURE=False,  # dashboard is restricted to local HTTP loopback
@@ -44,6 +45,15 @@ def create_app(agent: HostAgent) -> Flask:
     def protect_resources():
         if request.endpoint == "login":
             return None
+        if request.endpoint == "change_password":
+            if session.get("pending_password_change") and not agent.database.has_admin_password():
+                return None
+            session.clear()
+            return redirect(url_for("login"))
+        if session.get("pending_password_change") and not agent.database.has_admin_password():
+            if request.path.startswith("/api/") or request.method != "GET":
+                return jsonify({"error": "password change required"}), 403
+            return redirect(url_for("change_password"))
         if not logged_in():
             session.clear()
             if request.path.startswith("/api/") or request.method != "GET":
@@ -74,8 +84,9 @@ def create_app(agent: HostAgent) -> Flask:
     def login():
         if request.method == "GET" and logged_in():
             return redirect(url_for("index"))
-        if not agent.database.has_admin_password():
-            return Response("Admin password has not been set. Run the set-password CLI command.", status=503)
+        if request.method == "GET" and session.get("pending_password_change") and not agent.database.has_admin_password():
+            return redirect(url_for("change_password"))
+        first_login = not agent.database.has_admin_password()
         csrf_token = session.get("csrf_token") or secrets.token_urlsafe(32)
         session["csrf_token"] = csrf_token
         error = None
@@ -91,19 +102,52 @@ def create_app(agent: HostAgent) -> Flask:
                 blocked = len(attempts) >= 5
             if blocked:
                 error = "Too many attempts. Try again in a few minutes."
-            elif agent.database.verify_admin_password(request.form.get("password", "")):
+            elif (request.form.get("username") == "admin" and
+                  ((first_login and hmac.compare_digest(request.form.get("password", ""), "admin")) or
+                   (not first_login and agent.database.verify_admin_password(request.form.get("password", ""))))):
                 with login_lock:
                     failed_logins.pop(address, None)
                 session.clear()
-                session["admin_version"] = agent.database.auth_version()
                 session["csrf_token"] = secrets.token_urlsafe(32)
                 session.permanent = True
+                if first_login:
+                    session["pending_password_change"] = True
+                    return redirect(url_for("change_password"))
+                session["admin_version"] = agent.database.auth_version()
                 return redirect(url_for("index"))
             else:
                 with login_lock:
                     failed_logins[address].append(now)
                 error = "Incorrect password."
-        return render_template_string(LOGIN_PAGE, csrf_token=csrf_token, error=error), (401 if error else 200)
+        return render_template_string(LOGIN_PAGE, csrf_token=csrf_token, error=error,
+                                      first_login=first_login), (401 if error else 200)
+
+    @app.route("/change-password", methods=["GET", "POST"])
+    def change_password():
+        error = None
+        if request.method == "POST":
+            if not valid_csrf(request.form.get("csrf_token", "")):
+                abort(403)
+            password = request.form.get("password", "")
+            if password != request.form.get("confirmation", ""):
+                error = "Passwords do not match."
+            elif password == "admin":
+                error = "Choose a password different from the default."
+            else:
+                try:
+                    if not agent.database.initialize_admin_password(password):
+                        session.clear()
+                        return redirect(url_for("login"))
+                except ValueError as exc:
+                    error = str(exc)
+                else:
+                    session.clear()
+                    session["admin_version"] = agent.database.auth_version()
+                    session["csrf_token"] = secrets.token_urlsafe(32)
+                    session.permanent = True
+                    return redirect(url_for("index"))
+        return render_template_string(CHANGE_PASSWORD_PAGE, csrf_token=session["csrf_token"],
+                                      error=error), (400 if error else 200)
 
     @app.post("/logout")
     def logout():

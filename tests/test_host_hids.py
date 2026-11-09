@@ -5,14 +5,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from rt_nid_ml.host.agent import HostAgent
-from rt_nid_ml.host.collectors.linux import LinuxFileIntegrityCollector
-from rt_nid_ml.host.collectors.windows import WindowsEventLogCollector, parse_security_event
-from rt_nid_ml.host.config import HostConfig
-from rt_nid_ml.host.detection.engine import HostDetectionEngine
-from rt_nid_ml.host.models import CollectorStatus, HostEvent
-from rt_nid_ml.host.platform import PlatformCapabilities
-from rt_nid_ml.host.storage import HostDatabase
+from rt_hid.host.agent import HostAgent
+from rt_hid.host.collectors.linux import LinuxFileIntegrityCollector
+from rt_hid.host.collectors.windows import WindowsEventLogCollector, parse_security_event
+from rt_hid.host.config import HostConfig
+from rt_hid.host.detection.engine import HostDetectionEngine
+from rt_hid.host.models import CollectorStatus, HostEvent
+from rt_hid.host.platform import PlatformCapabilities
+from rt_hid.host.storage import HostDatabase
 
 
 class HostHidsTests(unittest.TestCase):
@@ -21,7 +21,7 @@ class HostHidsTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         with client.session_transaction() as browser_session:
             token = browser_session["csrf_token"]
-        response = client.post("/login", data={"password": "example-local-admin-password", "csrf_token": token})
+        response = client.post("/login", data={"username": "admin", "password": "example-local-admin-password", "csrf_token": token})
         self.assertEqual(response.status_code, 302)
         csrf = client.get("/api/session").get_json()["csrf_token"]
         return {"X-CSRF-Token": csrf}
@@ -157,7 +157,7 @@ class HostHidsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             config = HostConfig(host_id="host-1", database_path=Path(directory) / "host.sqlite3")
             capabilities = PlatformCapabilities("windows", "11", "AMD64", ())
-            with patch("rt_nid_ml.host.agent.detect_capabilities", return_value=capabilities):
+            with patch("rt_hid.host.agent.detect_capabilities", return_value=capabilities):
                 agent = HostAgent(config)
             try:
                 self.assertEqual({collector.collector_id for collector in agent.collectors}, {
@@ -174,7 +174,7 @@ class HostHidsTests(unittest.TestCase):
             try:
                 self.assertIn(agent.capabilities.system, {"linux", "windows", "darwin", ""})
                 agent.collect_once()
-                from rt_nid_ml.host.api import create_app
+                from rt_hid.host.api import create_app
                 agent.database.set_admin_password("example-local-admin-password")
                 client = create_app(agent).test_client()
                 self.assertEqual(client.get("/api/status").status_code, 401)
@@ -191,7 +191,7 @@ class HostHidsTests(unittest.TestCase):
                                 enabled_collectors=set())
             agent = HostAgent(config)
             try:
-                from rt_nid_ml.host.api import create_app
+                from rt_hid.host.api import create_app
 
                 agent.database.set_admin_password("example-local-admin-password")
 
@@ -253,7 +253,7 @@ class HostHidsTests(unittest.TestCase):
                                 enabled_collectors=set())
             agent = HostAgent(config)
             try:
-                from rt_nid_ml.host.api import create_app
+                from rt_hid.host.api import create_app
 
                 with self.assertRaises(ValueError):
                     agent.database.set_admin_password("short")
@@ -277,6 +277,44 @@ class HostHidsTests(unittest.TestCase):
                 self.login(client)
                 agent.database.set_admin_password("another-local-admin-password")
                 self.assertEqual(client.get("/api/status").status_code, 401)
+            finally:
+                agent.stop()
+
+    def test_default_login_requires_password_change(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = HostConfig(host_id="host-1", database_path=Path(directory) / "host.sqlite3",
+                                enabled_collectors=set())
+            agent = HostAgent(config)
+            try:
+                from rt_hid.host.api import create_app
+
+                client = create_app(agent).test_client()
+                self.assertEqual(client.get("/").status_code, 302)
+                self.assertIn(b"admin", client.get("/login").data)
+                with client.session_transaction() as browser_session:
+                    token = browser_session["csrf_token"]
+                self.assertEqual(client.post("/login", data={"username": "admin", "password": "wrong",
+                                                             "csrf_token": token}).status_code, 401)
+                response = client.post("/login", data={"username": "admin", "password": "admin",
+                                                       "csrf_token": token})
+                self.assertEqual(response.headers["Location"], "/change-password")
+                self.assertEqual(client.get("/api/status").status_code, 403)
+                self.assertEqual(client.get("/").headers["Location"], "/change-password")
+                self.assertEqual(client.post("/change-password", data={"password": "a-new-local-password",
+                                                                       "confirmation": "a-new-local-password"}).status_code, 403)
+                with client.session_transaction() as browser_session:
+                    token = browser_session["csrf_token"]
+                self.assertEqual(client.post("/change-password", data={"password": "short",
+                                                                       "confirmation": "short", "csrf_token": token}).status_code, 400)
+                response = client.post("/change-password", data={"password": "a-new-local-password",
+                                                                 "confirmation": "a-new-local-password",
+                                                                 "csrf_token": token})
+                self.assertEqual(response.headers["Location"], "/")
+                self.assertEqual(client.get("/api/status").status_code, 200)
+                self.assertTrue(agent.database.has_admin_password())
+                self.assertFalse(agent.database.verify_admin_password("admin"))
+                client.get("/login")
+                self.assertEqual(client.get("/change-password").headers["Location"], "/login")
             finally:
                 agent.stop()
 

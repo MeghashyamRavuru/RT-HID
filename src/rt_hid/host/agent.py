@@ -22,7 +22,7 @@ class HostAgent:
     def __init__(self, config: HostConfig, logger: logging.Logger | None = None) -> None:
         config.validate()
         self.config = config
-        self.logger = logger or logging.getLogger("rt_nid_ml.host")
+        self.logger = logger or logging.getLogger("rt_hid.host")
         self.database = HostDatabase(config.database_path)
         self.detector = HostDetectionEngine(config)
         self.alerts = HostAlertManager(self.database, config)

@@ -1,11 +1,11 @@
 [Unit]
-Description=RT-NID-ML standalone host intrusion detection agent
+Description=RT-HID standalone host intrusion detection agent
 After=local-fs.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/rt-nid-ml
-ExecStart=/opt/rt-nid-ml/.venv/bin/python -m rt_nid_ml.host.cli --config /etc/rt-nid-ml/host_ids.json dashboard
+WorkingDirectory=/opt/rt-hid
+ExecStart=/opt/rt-hid/.venv/bin/python -m rt_hid.host.cli --config /etc/rt-hid/host_ids.json dashboard
 Restart=on-failure
 RestartSec=5
 # Add narrowly scoped read permissions for auth logs and protected files as needed.
