@@ -15,6 +15,7 @@ from .behavior import evaluate_behavior, is_temporary
 from .network_rules import evaluate_connections
 from .persistence_rules import evaluate_persistence
 from ..identity import event_instance
+from ..auth_telemetry import remote_auth_address
 
 
 class HostDetectionEngine:
@@ -24,7 +25,7 @@ class HostDetectionEngine:
         self.config = config
         self.registry = RuleRegistry(config, database)
         self.graph = graph
-        self._recent_auth_failures: dict[tuple[str, str], deque[HostEvent]] = defaultdict(deque)
+        self._recent_auth_failures: dict[tuple[str, str, str], deque[HostEvent]] = defaultdict(deque)
         self._known_listeners: set[tuple[str, int, str]] = set()
         self._recent_event_ids: set[str] = set()
         self._recent_event_order: deque[str] = deque()
@@ -66,7 +67,12 @@ class HostDetectionEngine:
     def _auth_rules(self, event: HostEvent) -> list[Detection]:
         if event.action not in {"ssh_login", "ftp_login", "sudo", "remote_login", "local_login"}:
             return []
-        source = event.source_ip or f"local:{event.username or 'unknown'}"
+        source_ip = event.source_ip
+        if event.action in {'ssh_login', 'ftp_login'}:
+            source_ip = remote_auth_address(source_ip)
+            if source_ip is None:
+                return []
+        source = source_ip or f"local:{event.username or 'unknown'}"
         rule_key = "HIDS-AUTH-001" if event.action == "ssh_login" else "HIDS-AUTH-002"
         threshold = self.registry.settings.get(rule_key, {}).get("threshold", self.config.auth_failure_threshold)
         key = (event.host_id, source, event.action)
@@ -85,7 +91,7 @@ class HostDetectionEngine:
                 category="suspicious_login", tactic="Credential Access", technique_id="T1110",
                 severity="high", confidence=0.7, timestamp=event.timestamp,
                 event_ids=related, reason=f"Successful {event.action} from {source} followed recent failures",
-                evidence={"source_ip": event.source_ip, "username": event.username, "action": event.action,
+                evidence={"source_ip": source_ip, "username": event.username, "action": event.action,
                           "previous_failures": len(related) - 1},
                 investigation="Verify this login and review the preceding failed attempts.", host_id=event.host_id,
             )]
@@ -110,7 +116,7 @@ class HostDetectionEngine:
             timestamp=event.timestamp,
             event_ids=tuple(item.event_id for item in failures),
             reason=f"{len(failures)} failed {event.action} attempts from {source} within the configured window",
-            evidence={"source_ip": event.source_ip, "username": event.username, "attempts": len(failures), "action": event.action},
+            evidence={"source_ip": source_ip, "username": event.username, "attempts": len(failures), "action": event.action},
             investigation="Review the source, target account, and any subsequent successful login.",
             host_id=event.host_id,
         )]

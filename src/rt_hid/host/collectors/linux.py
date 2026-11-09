@@ -16,6 +16,7 @@ from ..models import CollectorStatus, HostEvent
 from ..storage import HostDatabase
 from .base import Collector, EventSink
 from .network import PortableNetworkCollector
+from ..auth_telemetry import parse_linux_auth_line, redact_auth_line as _redact_log_line
 
 
 class LinuxAuthCollector(Collector):
@@ -50,30 +51,7 @@ class LinuxAuthCollector(Collector):
         return events
 
     def _parse_line(self, line: str) -> HostEvent | None:
-        lower = line.lower()
-        failed = "failed password" in lower or "authentication failure" in lower or "invalid user" in lower
-        success = "accepted password" in lower or "accepted publickey" in lower
-        sudo_failure = "sudo" in lower and "incorrect password" in lower
-        if not (failed or success or sudo_failure):
-            return None
-        action = "sudo" if sudo_failure else "ssh_login"
-        outcome = "failure" if failed or sudo_failure else "success"
-        source_ip = None
-        match = re.search(r"from\s+(\S+)", line, re.IGNORECASE)
-        if match:
-            source_ip = match.group(1).rstrip(".")
-        user_match = re.search(r"(?:for|user)\s+(?:invalid user\s+)?([A-Za-z0-9._-]+)", line, re.IGNORECASE)
-        return HostEvent.create(
-            self.host_id,
-            "auth",
-            "linux_auth_log",
-            severity="informational",
-            username=user_match.group(1) if user_match else None,
-            source_ip=source_ip,
-            action=action,
-            outcome=outcome,
-            evidence={"line": _redact_log_line(line)},
-        )
+        return parse_linux_auth_line(line, self.host_id)
 
 
 class LinuxProcessCollector(Collector):
@@ -453,7 +431,3 @@ def _process_name(pid: int | None) -> str | None:
         return psutil.Process(pid).name()
     except (psutil.Error, OSError):
         return None
-
-
-def _redact_log_line(line: str) -> str:
-    return re.sub(r"(password|passwd|token|secret)=?\S*", r"\1=<redacted>", line, flags=re.IGNORECASE).strip()

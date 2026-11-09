@@ -1,0 +1,66 @@
+"""Normalize authentication outcomes, without counting secondary log messages as attempts."""
+from __future__ import annotations
+
+import ipaddress
+import re
+
+from .models import HostEvent
+
+
+_SSH_DAEMON = re.compile(r'(?:^|\s)sshd(?:-session|-auth)?(?:\[(?P<pid>\d{1,10})\])?:\s*', re.IGNORECASE)
+_SSH_RESULT = re.compile(
+    r'(?P<result>Failed|Accepted)\s+(?P<method>[a-z0-9/._-]{1,64})\s+for\s+'
+    r'(?:(?P<invalid>invalid user)\s+)?(?P<username>\S{1,128})\s+from\s+'
+    r'(?P<address>\S{1,128})\s+port\s+(?P<port>\d{1,5})(?=\s|$)', re.IGNORECASE)
+_SUDO_FAILURE = re.compile(
+    r'(?:^|\s)sudo(?:\[(?P<pid>\d{1,10})\])?:\s*(?P<username>[^\s:;]{1,128})\s*:\s*'
+    r'(?P<attempts>\d{1,4})\s+incorrect password attempts?\b', re.IGNORECASE)
+
+
+def remote_auth_address(value: str | None) -> str | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return None
+    if address.is_unspecified or address.is_multicast:
+        return None
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    return str(address)
+
+
+def redact_auth_line(line: str) -> str:
+    return re.sub(r'(password|passwd|token|secret)=?\S*', r'\1=<redacted>', line, flags=re.IGNORECASE).strip()
+
+
+def parse_linux_auth_line(line: str, host_id: str) -> HostEvent | None:
+    daemon = _SSH_DAEMON.search(line)
+    result = _SSH_RESULT.match(line, daemon.end()) if daemon else _SSH_RESULT.match(line.lstrip())
+    if daemon or result:
+        if result is None:
+            # PAM failures, Invalid user notices and aggregate summaries describe
+            # authentication context, not an additional password attempt.
+            return None
+        method = result['method'].lower()
+        outcome = 'failure' if result['result'].lower() == 'failed' else 'success'
+        supported = {'password', 'keyboard-interactive', 'challenge-response'} if outcome == 'failure' else {
+            'password', 'publickey', 'keyboard-interactive', 'challenge-response', 'hostbased', 'gssapi-with-mic'}
+        address = remote_auth_address(result['address'])
+        port = int(result['port'])
+        if method.split('/', 1)[0] not in supported or address is None or not 1 <= port <= 65535:
+            return None
+        return HostEvent.create(host_id, 'auth', 'linux_auth_log', action='ssh_login', outcome=outcome,
+            username=result['username'], source_ip=address,
+            metadata={'auth_method': method, 'source_port': port,
+                      'daemon_pid': int(daemon['pid']) if daemon and daemon['pid'] else None,
+                      'invalid_user': result['invalid'] is not None},
+            evidence={'line': redact_auth_line(line)})
+
+    sudo = _SUDO_FAILURE.search(line)
+    if sudo and int(sudo['attempts']) > 0:
+        return HostEvent.create(host_id, 'auth', 'linux_auth_log', action='sudo', outcome='failure',
+            username=sudo['username'], metadata={'reported_attempts': int(sudo['attempts'])},
+            evidence={'line': redact_auth_line(line)})
+    return None

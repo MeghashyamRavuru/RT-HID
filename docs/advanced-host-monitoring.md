@@ -66,6 +66,12 @@ Database backup uses SQLite's online backup API from a separate connection. Back
 
 Phase 6 validation covers response authorization, identity changes, audit immutability, database backup/restore, retention protection of shared active evidence, legacy schema upgrades and idle persistence writes. Final verification: **65 tests passed** with `python -m unittest discover -s tests -v`; compilation passed for source, tests and validation scripts; dashboard JavaScript syntax and `git diff --check` passed. The repository has no configured linter or type checker.
 
+### SSH authentication parsing correction
+
+The authentication parser counts primary OpenSSH authentication outcome records instead of also counting PAM context and standalone invalid-user notices. Otherwise one failed login can contribute both an IP-attributed failure and an unattributed failure, producing a second host-only brute-force incident. Supported daemon tags include sshd, sshd-session and sshd-auth, and direct sshd log output remains supported. Usernames are parsed from the outcome record, IP addresses are validated/canonicalized, and unattributed SSH/FTP records cannot fall back to a local-host brute-force group. Sudo summaries retain their local username. Identical primary records still count individually because distinct guesses can have identical log text within the same second.
+
+The additional regression tests are in `tests/test_auth_telemetry.py`. Test and compilation execution for this correction was declined, so the 65-test result above describes the previously verified baseline, not this subsequent change. Restart the agent to load the new parser. Historical duplicate alerts can be marked false positive through the existing investigation workflow.
+
 ## Architecture and schema reference
 
 | Module | Responsibility |
