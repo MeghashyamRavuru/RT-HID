@@ -262,6 +262,34 @@
     @media(max-width:900px) { .topbar { padding:16px 0; } }
     @media(max-width:600px) { .top-actions { width:100%; justify-content:flex-start; } .overview-heading { flex-direction:column; align-items:stretch; } .overview-actions { width:100%; } .overview-actions .button { flex:1; } .command-bar { flex-wrap:wrap; } .command-bar input { flex-basis:100%; } .command-bar select { width:auto; flex:1 1 calc(100% - 104px); } .command-bar button { flex:0 0 88px; } .stats { grid-template-columns:1fr 1fr; } .metric { min-height:104px; } .metric strong { font-size:26px; } .activity { min-height:190px; } .day { height:166px; } .day-bar { max-height:136px; } .chart-total { font-size:28px; } }
     @media(max-width:400px) { .stats { grid-template-columns:1fr; } }
+    /* Full-width analyst layout and truthful incident trend */
+    .main { max-width:none; margin:0; padding-inline:clamp(20px,2vw,40px); }
+    .charts { grid-template-columns:minmax(0,2fr) minmax(240px,1fr) minmax(240px,1fr); align-items:start; }
+    .charts .panel:first-child { grid-column:auto; grid-row:auto; }
+    .charts .panel:last-child { grid-column:auto; }
+    .activity-panel { display:block; }
+    .activity { display:block; flex:none; min-height:0; padding:12px 0 0; border:0; background:none; }
+    .activity svg { display:block; width:100%; height:220px; overflow:visible; }
+    .trend-gridline { stroke:#30383e; stroke-width:1; vector-effect:non-scaling-stroke; }
+    .trend-area { fill:rgba(115,196,182,.09); }
+    .trend-line { fill:none; stroke:var(--teal); stroke-width:2.5; stroke-linejoin:round; stroke-linecap:round; vector-effect:non-scaling-stroke; }
+    .trend-point { fill:var(--surface); stroke:var(--teal); stroke-width:2; vector-effect:non-scaling-stroke; }
+    .trend-point-current { fill:var(--teal); }
+    .trend-axis-label { fill:var(--muted); font:11px Segoe UI, sans-serif; }
+    .trend-labels { position:relative; height:24px; color:var(--muted); font-size:11px; font-variant-numeric:tabular-nums; }
+    .trend-labels span { position:absolute; top:0; transform:translateX(-50%); white-space:nowrap; }
+    .activity.activity-is-empty { min-height:180px; display:grid; place-items:center; border-top:1px solid var(--line); margin-top:16px; padding:0; }
+    .activity-empty { display:grid; gap:4px; text-align:center; }
+    .activity-empty strong { color:var(--text); font-size:15px; font-weight:600; }
+    .activity-empty span { color:var(--muted); font-size:12px; }
+    .chart-total-zero { color:var(--muted); }
+    .charts .panel:not(:first-child) .empty { min-height:140px; display:grid; place-items:center; }
+    .overview-bottom { align-items:start; }
+    @media(max-width:1350px) { .charts { grid-template-columns:repeat(2,minmax(0,1fr)); } .charts .panel:first-child { grid-column:1/-1; } .charts .panel:last-child { grid-column:auto; } }
+    @media(max-width:1180px) { .topbar { align-items:flex-start; flex-direction:column; justify-content:center; gap:12px; padding:20px 0; } .top-actions { width:100%; justify-content:flex-start; } }
+    @media(max-width:900px) { .main { padding-inline:24px; } }
+    @media(max-width:700px) { .charts { grid-template-columns:1fr; } .charts .panel:first-child,.charts .panel:last-child { grid-column:auto; } .activity svg { height:180px; } .activity.activity-is-empty { min-height:200px; } }
+    @media(max-width:600px) { .main { padding-inline:16px; } }
     @media(prefers-reduced-motion:reduce) { .sidebar,.metric { transition:none; } }
   </style>
 </head>
@@ -442,10 +470,10 @@
       box.addEventListener('click', onClick);
       return box;
     }
-    function bars(target, groups, names = null) {
+    function bars(target, groups, names = null, emptyMessage = 'No data recorded') {
       target.replaceChildren();
       const entries = names ? names.map(name => [name, groups[name] || 0]) : Object.entries(groups || {});
-      if (!entries.length || entries.every(([, count]) => !count)) { target.append(empty('No data in this period.')); return; }
+      if (!entries.length || entries.every(([, count]) => !count)) { target.append(empty(emptyMessage)); return; }
       const max = Math.max(1, ...entries.map(([, count]) => count));
       for (const [name, count] of entries) {
         const line = element('div', 'bar-row');
@@ -475,22 +503,54 @@
       const now = new Date();
       const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
       const days = Array.from({ length:7 }, (_, index) => new Date(midnight - (6 - index) * 86400000).toISOString().slice(0, 10));
-      const max = Math.max(1, ...days.map(day => byDay.get(day) || 0));
-      const total = days.reduce((sum, day) => sum + (byDay.get(day) || 0), 0);
+      const values = days.map(day => { const count = Number(byDay.get(day)); return Number.isFinite(count) ? Math.max(0, count) : 0; });
+      const total = values.reduce((sum, count) => sum + count, 0);
       $('#activity-total').textContent = String(total);
       $('#activity-total').title = `${total} incidents in the last 7 UTC days`;
-      chart.setAttribute('aria-label', days.map(day => `${day}: ${byDay.get(day) || 0} incidents`).join('; '));
-      for (const day of days) {
-        const item = element('div', 'day');
-        const bar = element('span', 'day-bar');
-        const count = byDay.get(day) || 0;
-        bar.style.height = `${Math.max(3, count * 176 / max)}px`;
-        bar.title = `${day} UTC · ${count} incident${count === 1 ? '' : 's'}`;
-        item.append(element('span', 'day-count', count ? count : ''), bar, element('span', 'day-label', day.slice(5)));
-        chart.append(item);
+      $('#activity-total').classList.toggle('chart-total-zero', total === 0);
+      chart.setAttribute('aria-label', days.map((day, index) => `${day}: ${values[index]} incidents`).join('; '));
+      chart.classList.toggle('activity-is-empty', total === 0);
+      if (total === 0) {
+        const message = element('div', 'activity-empty');
+        message.append(element('strong', '', 'No new incidents'), element('span', '', 'Nothing recorded in the last seven UTC days'));
+        chart.append(message);
+      } else {
+        const namespace = 'http://www.w3.org/2000/svg';
+        const makeSvg = (tag, attributes) => {
+          const node = document.createElementNS(namespace, tag);
+          for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, String(value));
+          return node;
+        };
+        const plot = makeSvg('svg', { viewBox:'0 0 700 220', preserveAspectRatio:'none', 'aria-hidden':'true' });
+        const maximum = Math.max(2, Math.ceil(Math.max(...values) / 2) * 2);
+        const top = 20, bottom = 190, left = 30, right = 680;
+        for (const [y, value] of [[top, maximum], [(top + bottom) / 2, maximum / 2], [bottom, 0]]) {
+          plot.append(makeSvg('line', { x1:left, y1:y, x2:right, y2:y, class:'trend-gridline' }));
+          const axis = makeSvg('text', { x:0, y:y + 4, class:'trend-axis-label' });
+          axis.textContent = String(value);
+          plot.append(axis);
+        }
+        const points = values.map((value, index) => ({ x:left + index * (right - left) / 6, y:bottom - value * (bottom - top) / maximum }));
+        const line = points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ');
+        plot.append(makeSvg('path', { d:`${line} L ${right} ${bottom} L ${left} ${bottom} Z`, class:'trend-area' }));
+        plot.append(makeSvg('path', { d:line, class:'trend-line' }));
+        points.forEach((point, index) => {
+          const dot = makeSvg('circle', { cx:point.x, cy:point.y, r:index === 6 ? 5 : 3.5, class:index === 6 ? 'trend-point trend-point-current' : 'trend-point' });
+          dot.append(makeSvg('title', {}));
+          dot.firstChild.textContent = `${days[index]} UTC: ${values[index]} incident${values[index] === 1 ? '' : 's'}`;
+          plot.append(dot);
+        });
+        chart.append(plot);
+        const labels = element('div', 'trend-labels');
+        days.forEach((day, index) => {
+          const tick = element('span', '', day.slice(5));
+          tick.style.left = `${(left + index * (right - left) / 6) * 100 / 700}%`;
+          labels.append(tick);
+        });
+        chart.append(labels);
       }
-      bars($('#severity-chart'), counts.severity_counts || {}, ['critical','high','medium','low','informational']);
-      bars($('#category-chart'), counts.category_counts || {});
+      bars($('#severity-chart'), counts.severity_counts || {}, ['critical','high','medium','low','informational'], 'No alerts recorded');
+      bars($('#category-chart'), counts.category_counts || {}, null, 'No incidents recorded');
       const recentAlerts = $('#recent-alerts');
       recentAlerts.replaceChildren();
       for (const item of alerts.items || []) recentAlerts.append(row(item.title || item.rule_id || 'Alert', [dateTime(item.last_seen), item.rule_id], item.severity, () => { showView('alerts'); selectAlert(item); }));
