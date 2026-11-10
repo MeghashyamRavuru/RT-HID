@@ -97,7 +97,7 @@ Operations includes a bounded background queue, optional YARA scanning, response
 
 See [advanced host monitoring, API reference and validation](docs/advanced-host-monitoring.md) and [optional configuration example](config/advanced.example.json) for the full support matrix, rules, migrations, performance results, limitations and Windows/Linux validation steps.
 
-Example Linux service files are in `packaging/`. The supplied systemd unit expects a checkout at `/opt/rt-hid` and config at `/etc/rt-hid/host_ids.json`; edit those paths for another location. The service runs the monitor and dashboard locally. Complete the first login in a browser on the host.
+Example Linux service files are in `packaging/`. The supplied systemd unit expects a checkout at `/opt/rt-hid` and config at `/etc/rt-hid/host_ids.json`; edit those paths for another location. The service runs the monitor and dashboard locally. Complete the first login in a browser on the host. The Linux sample sets `threat_intelligence_enabled` to `true` so enabled imported IPs can match collected events. If the service was installed earlier, edit `/etc/rt-hid/host_ids.json` to add `"threat_intelligence_enabled": true`, restart with `sudo systemctl restart rt-hid`, and confirm the Intelligence page says matching is enabled. Editing the repository sample alone does not change an already deployed service.
 
 ## Limits
 

@@ -17,6 +17,7 @@
   "file_integrity_interval_seconds": 30,
   "auth_failure_threshold": 5,
   "auth_failure_window_seconds": 300,
+  "threat_intelligence_enabled": true,
   "alert_cooldown_seconds": 300,
   "retention_days": 30,
   "enabled_collectors": ["auth", "ftp", "process", "network", "file_integrity", "system", "event_log"]
