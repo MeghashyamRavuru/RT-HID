@@ -28,7 +28,7 @@ class HostAlertManager:
                 if self.database.connection.execute("SELECT 1 FROM alerts WHERE json_extract(payload,'$.detection_id')=? LIMIT 1", (detection.detection_id,)).fetchone():
                     return None
             self._remember(detection.detection_id)
-            subject = (detection.evidence.get("source_ip") or detection.evidence.get("file_path")
+            subject = (detection.evidence.get("indicator_value") or detection.evidence.get("source_ip") or detection.evidence.get("file_path")
                        or detection.evidence.get("target_account") or detection.evidence.get("service_name")
                        or detection.evidence.get("username") or detection.evidence.get("port")
                        or detection.evidence.get("process_name") or "host")

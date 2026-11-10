@@ -19,6 +19,9 @@ _VSFTPD_LOGIN = re.compile(
     r'(?:\[pid\s+\d+\]|\bvsftpd(?:\[\d+\])?:)\s*'
     r'(?:\[(?P<username>[^\]\r\n]{1,128})\]\s*)?'
     r'(?P<result>FAIL|OK)\s+LOGIN:\s+Client\s+"(?P<address>[^"\r\n]{1,128})"', re.IGNORECASE)
+_VSFTPD_CONNECT = re.compile(
+    r'(?:\[pid\s+\d+\]|\bvsftpd(?:\[\d+\])?:)\s*'
+    r'CONNECT:\s+Client\s+"(?P<address>[^"\r\n]{1,128})"', re.IGNORECASE)
 _PROFTPD_LOGIN = re.compile(
     r'\bproftpd\[\d+\]:\s+[^\r\n]{0,256}?\('
     r'[^\[\]\r\n]{0,128}\[(?P<address>[^\]\r\n]{1,128})\]\)\s*[-:]?\s*'
@@ -90,3 +93,15 @@ def parse_linux_ftp_line(line: str, host_id: str) -> HostEvent | None:
     return HostEvent.create(host_id, 'auth', 'linux_ftp_log', action='ftp_login', outcome=outcome,
         username=username, source_ip=address, metadata={'ftp_server': 'vsftpd' if vsftpd else 'proftpd'},
         evidence={'ftp_server': 'vsftpd' if vsftpd else 'proftpd', 'outcome': outcome})
+
+
+def parse_vsftpd_connection_line(line: str, host_id: str) -> HostEvent | None:
+    result = _VSFTPD_CONNECT.search(line)
+    if result is None:
+        return None
+    address = remote_auth_address(result['address'])
+    if address is None:
+        return None
+    return HostEvent.create(host_id, 'network_connection', 'linux_ftp_log', action='connect', outcome='observed',
+        source_ip=address, protocol='TCP', metadata={'ftp_server': 'vsftpd', 'direction': 'inbound'},
+        evidence={'ftp_server': 'vsftpd', 'direction': 'inbound'})

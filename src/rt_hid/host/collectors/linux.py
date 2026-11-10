@@ -16,7 +16,8 @@ from ..models import CollectorStatus, HostEvent
 from ..storage import HostDatabase
 from .base import Collector, EventSink
 from .network import PortableNetworkCollector
-from ..auth_telemetry import parse_linux_auth_line, parse_linux_ftp_line, redact_auth_line as _redact_log_line
+from ..auth_telemetry import (parse_linux_auth_line, parse_linux_ftp_line, parse_vsftpd_connection_line,
+                              redact_auth_line as _redact_log_line)
 
 
 class LinuxAuthCollector(Collector):
@@ -26,6 +27,7 @@ class LinuxAuthCollector(Collector):
         super().__init__(host_id, sink)
         self.status = CollectorStatus(self.collector_id, "linux", False, True)
         self.paths = config.auth_log_paths
+        self.collect_ftp_connections = config.threat_intelligence_enabled
         self.database = database
         self._active_path: Path | None = None
 
@@ -52,7 +54,8 @@ class LinuxAuthCollector(Collector):
         return events
 
     def _parse_line(self, line: str) -> HostEvent | None:
-        return parse_linux_auth_line(line, self.host_id) or parse_linux_ftp_line(line, self.host_id)
+        return (parse_linux_auth_line(line, self.host_id) or parse_linux_ftp_line(line, self.host_id)
+                or (parse_vsftpd_connection_line(line, self.host_id) if self.collect_ftp_connections else None))
 
 
 class LinuxProcessCollector(Collector):

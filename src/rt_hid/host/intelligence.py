@@ -202,8 +202,12 @@ class Intelligence:
         if not self.config.threat_intelligence_enabled:
             return []
         candidates = [('sha256', event.metadata.get('executable_sha256'))] if event.event_type == 'process_start' else []
+        if event.event_type == 'auth' and event.action in {'ftp_login', 'ssh_login', 'remote_login'}:
+            candidates.append(('ip', event.source_ip))
         if event.event_type == 'network_connection':
             candidates += [('ip', event.destination_ip), ('domain', event.metadata.get('destination_domain'))]
+            if event.metadata.get('direction') == 'inbound':
+                candidates.append(('ip', event.source_ip))
         matches = []
         with self.database._lock:
             for kind, value in candidates:
@@ -223,8 +227,12 @@ class Intelligence:
             return []
         ranking = {key: index for index, key in enumerate(("informational", "low", "medium", "high", "critical"))}
         return [Detection.create(rule_id="HIDS-IOC-001", rule_name="Local threat indicator match", category="threat_intelligence",
-            tactic="Command and Control", technique_id=None, severity=max(matches, key=lambda item: ranking[item['severity']])['severity'],
+            tactic="Credential Access" if event.event_type == 'auth' else "Command and Control", technique_id=None,
+            severity=max(matches, key=lambda item: ranking[item['severity']])['severity'],
             confidence=max(item['confidence'] for item in matches), timestamp=event.timestamp,
             event_ids=(event.event_id,), reason="Observed telemetry matches enabled local indicators; assess source reliability",
-            evidence={"indicators": matches, "process_name": event.process_name},
+            evidence={"indicators": matches, "indicator_value": matches[0]['value'],
+                      "source_ip": event.source_ip if event.event_type == 'auth' or event.metadata.get('direction') == 'inbound' else None,
+                      "destination_ip": event.destination_ip if event.event_type == 'network_connection' else None,
+                      "process_name": event.process_name},
             investigation="Assess indicator source reliability, age, confidence and observed behavior. A match alone does not confirm compromise.", host_id=event.host_id)]
