@@ -9,12 +9,14 @@ from typing import Any
 from ..config import HostConfig
 from ..models import Detection
 from ..storage import HostDatabase
+from ..notifications import DesktopNotifier
 
 
 class HostAlertManager:
-    def __init__(self, database: HostDatabase, config: HostConfig) -> None:
+    def __init__(self, database: HostDatabase, config: HostConfig, notifier: DesktopNotifier | None = None) -> None:
         self.database = database
         self.config = config
+        self.notifier = notifier
         self._lock = threading.RLock()
         self._seen: set[str] = set()
         self._seen_order: deque[str] = deque(maxlen=10_000)
@@ -95,6 +97,11 @@ class HostAlertManager:
             self.database.save_detection(detection)
             self.database.save_alert(alert)
             self.database.save_incident(incident)
+            if self.notifier is not None:
+                try:
+                    self.notifier.publish(alert, new_incident=existing is None)
+                except Exception as error:
+                    self.notifier.logger.warning("Desktop notification scheduling failed: %s", type(error).__name__)
             return alert
 
     def acknowledge(self, incident_id: str) -> None:

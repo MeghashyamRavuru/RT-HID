@@ -68,6 +68,7 @@ def main() -> None:
             host = args.dashboard_host or config.dashboard_host
             if host not in {"127.0.0.1", "::1", "localhost"}:
                 parser.error("dashboard must bind to loopback; use a local browser or an HTTPS reverse proxy")
+            agent.notifications.set_dashboard_address(host, args.dashboard_port or config.dashboard_port)
             monitor = threading.Thread(target=agent.run_forever, kwargs={"install_signals": False}, daemon=True)
             monitor.start()
             app = create_app(agent)

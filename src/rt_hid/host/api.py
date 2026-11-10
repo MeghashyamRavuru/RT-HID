@@ -292,6 +292,7 @@ def create_app(agent: HostAgent) -> Flask:
             "executable_hashing_enabled": agent.config.executable_hashing_enabled,
             "monitored_paths": [str(path) for path in agent.config.monitored_paths],
             "dashboard_host": agent.config.dashboard_host,
+            "desktop_notifications": agent.notifications.status(),
             "persistence_enabled":agent.config.persistence_enabled,
             "persistence_paths":[str(path) for path in agent.config.persistence_paths],
             "threat_intelligence_enabled":agent.config.threat_intelligence_enabled,

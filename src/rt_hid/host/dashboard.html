@@ -936,8 +936,9 @@
     }
     function renderSettings() {
       const data = state.settings || {};
+      const notifications = state.status?.desktop_notifications || data.desktop_notifications || {};
       const target = $('#settings-content'); target.className = ''; target.replaceChildren();
-      facts(target,[['Version',data.version || 'Unavailable'],['Platform',data.platform?.system],['Host ID',data.host_id],['Database path',data.database_path],['Dashboard binding',data.dashboard_host],['Process polling',data.process_interval_seconds == null ? null : `${data.process_interval_seconds}s`],['Executable hashing',data.executable_hashing_enabled ? 'Enabled' : 'Disabled'],['Collectors',(data.enabled_collectors || []).join(', ')]]);
+      facts(target,[['Version',data.version || 'Unavailable'],['Platform',data.platform?.system],['Host ID',data.host_id],['Database path',data.database_path],['Dashboard binding',data.dashboard_host],['Process polling',data.process_interval_seconds == null ? null : `${data.process_interval_seconds}s`],['Executable hashing',data.executable_hashing_enabled ? 'Enabled' : 'Disabled'],['Collectors',(data.enabled_collectors || []).join(', ')],['Desktop notifications',!notifications.enabled ? 'Disabled' : notifications.available ? 'Available' : 'Unavailable'],['Notification session',notifications.detail]]);
       const paths = section(target,'Monitored file paths');
       for (const path of data.monitored_paths || []) paths.append(element('div','record',path));
       if (!data.monitored_paths?.length) paths.append(empty('No paths configured.'));

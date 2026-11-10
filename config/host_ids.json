@@ -3,6 +3,7 @@
   "database_path": "data/host_ids.sqlite3",
   "dashboard_host": "127.0.0.1",
   "dashboard_port": 5000,
+  "desktop_notifications_enabled": true,
   "auth_log_paths": ["/var/log/auth.log", "/var/log/secure", "/var/log/vsftpd.log", "/var/log/proftpd/proftpd.log"],
   "windows_ftp_log_paths": ["C:\\inetpub\\logs\\LogFiles"],
   "monitored_paths": ["/etc/passwd", "/etc/shadow", "/etc/sudoers", "/etc/ssh/sshd_config"],

@@ -21,6 +21,7 @@ class HostConfig:
     database_path: Path = Path("data/host_ids.sqlite3")
     dashboard_host: str = "127.0.0.1"
     dashboard_port: int = 5000
+    desktop_notifications_enabled: bool = True
     auth_log_paths: list[Path] = field(default_factory=lambda: [Path("/var/log/auth.log"), Path("/var/log/secure"),
                                                                Path("/var/log/vsftpd.log"),
                                                                Path("/var/log/proftpd/proftpd.log")])
@@ -110,7 +111,7 @@ class HostConfig:
             raise ValueError("executable_hash_max_bytes must be between 0 and 64 MiB")
         if not 0 <= self.process_hashes_per_scan <= 8:
             raise ValueError("process_hashes_per_scan must be between 0 and 8")
-        for key in ("threat_intelligence_enabled", "sysmon_enabled", "persistence_enabled", "persistence_registry_enabled",
+        for key in ("desktop_notifications_enabled", "threat_intelligence_enabled", "sysmon_enabled", "persistence_enabled", "persistence_registry_enabled",
                     "persistence_services_enabled", "yara_enabled", "response_enabled", "retention_enabled"):
             if not isinstance(getattr(self, key), bool):
                 raise ValueError(f"{key} must be a boolean")

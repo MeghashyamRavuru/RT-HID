@@ -1,6 +1,7 @@
 {
   "host_id": "example-host",
   "database_path": "data/host_ids.sqlite3",
+  "desktop_notifications_enabled": true,
   "correlation_window_seconds": 300,
   "network_unusual_ports": [4444, 5555, 6667, 9001],
   "network_repeat_threshold": 5,

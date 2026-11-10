@@ -29,6 +29,7 @@ from .scanning import YaraScanner
 from .audit import AuditLog
 from .maintenance import Maintenance
 from .response import ResponseService
+from .notifications import DesktopNotifier
 
 
 class HostAgent:
@@ -40,7 +41,8 @@ class HostAgent:
         self.processes = ProcessGraph(self.database)
         self.detector = HostDetectionEngine(config, self.database, self.processes)
         self._ingest_lock = threading.RLock()
-        self.alerts = HostAlertManager(self.database, config)
+        self.notifications = DesktopNotifier(config.desktop_notifications_enabled, self.logger, config.dashboard_port)
+        self.alerts = HostAlertManager(self.database, config, self.notifications)
         self.intelligence = Intelligence(self.database, config)
         self.correlator = Correlator(self.database, config)
         self.jobs = JobRunner(self.database)
@@ -152,6 +154,7 @@ class HostAgent:
             self._persistence_thread.join(timeout=10)
         self.jobs.close()
         self.alerts.shutdown()
+        self.notifications.close()
         for collector in self.collectors:
             collector.status = replace(collector.status, state="stopped", detail="stopped")
             self.database.save_collector_status(collector.status)
@@ -169,6 +172,7 @@ class HostAgent:
             "hostname": platform.node(),
             "platform": self.capabilities.__dict__,
             "collectors": collectors,
+            "desktop_notifications": self.notifications.status(),
             "background_queue":{'depth':self.jobs.queue.qsize(),'capacity':4,'worker_running':bool(self.jobs.thread and self.jobs.thread.is_alive())},
             "capabilities": {"network":"psutil polling with inferred outbound direction", "persistence":self.config.persistence_enabled,
                 "sysmon":"configured; see collector health" if self.config.sysmon_enabled and self.capabilities.system=='windows' else 'not configured or unsupported', "auditd":"not configured", "journald":"not configured", "ebpf":"not installed",
