@@ -7,7 +7,7 @@ import re
 from .models import HostEvent
 
 
-_SSH_DAEMON = re.compile(r'(?:^|\s)sshd(?:-session|-auth)?(?:\[(?P<pid>\d{1,10})\])?:\s*', re.IGNORECASE)
+_SSH_DAEMON = re.compile(r'(?:^|\s)(?P<daemon>sshd(?:-session|-auth)?)(?:\[(?P<pid>\d{1,10})\])?:\s*', re.IGNORECASE)
 _SSH_RESULT = re.compile(
     r'(?P<result>Failed|Accepted)\s+(?P<method>[a-z0-9/._-]{1,64})\s+for\s+'
     r'(?:(?P<invalid>invalid user)\s+)?(?P<username>\S{1,128})\s+from\s+'
@@ -65,6 +65,7 @@ def parse_linux_auth_line(line: str, host_id: str) -> HostEvent | None:
             return None
         return HostEvent.create(host_id, 'auth', 'linux_auth_log', action='ssh_login', outcome=outcome,
             username=result['username'], source_ip=address,
+            process_name=daemon['daemon'].lower() if daemon else 'sshd',
             metadata={'auth_method': method, 'source_port': port,
                       'daemon_pid': int(daemon['pid']) if daemon and daemon['pid'] else None,
                       'invalid_user': result['invalid'] is not None},

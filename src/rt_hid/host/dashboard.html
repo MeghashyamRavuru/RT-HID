@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>RT-HID · Host security console</title>
   <style>
-    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, Segoe UI, sans-serif; --bg:#0b121c; --sidebar:#0e1823; --surface:#121f2c; --surface2:#172635; --line:#294051; --text:#e5eef3; --muted:#9aafbc; --teal:#61c6c6; --red:#ed8583; --amber:#e7ba6e; --green:#7ed7a4; }
+    /* Visual refinement guided by Unslop by Damir Sokolovsky, CC BY 4.0. */
+    :root { color-scheme:dark; font-family:Segoe UI, Inter, ui-sans-serif, system-ui, sans-serif; --bg:#101317; --sidebar:#15191d; --surface:#191e23; --surface2:#20262b; --line:#30383e; --text:#edf1f0; --muted:#a8b3b3; --teal:#73c4b6; --red:#e99794; --amber:#e5bd7c; --green:#8ac7a5; }
     * { box-sizing:border-box; }
     body { margin:0; background:var(--bg); color:var(--text); }
     button,input,select,textarea { font:inherit; }
@@ -22,7 +23,6 @@
     .nav button { border:0; border-radius:8px; background:transparent; color:var(--muted); text-align:left; padding:11px 12px; display:flex; align-items:center; gap:11px; font-size:13px; font-weight:650; }
     .nav button:hover,.nav button.active { color:var(--text); background:#1b303d; }
     .nav button.active { box-shadow:inset 3px 0 var(--teal); }
-    .nav-icon { width:23px; color:var(--teal); text-align:center; font-weight:800; }
     .sidebar-foot { margin-top:auto; padding:17px 22px; color:var(--muted); font-size:11px; border-top:1px solid var(--line); line-height:1.5; }
     .main { min-width:0; padding:0 30px 50px; max-width:1800px; width:100%; margin:0 auto; }
     .topbar { min-height:102px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:18px; margin-bottom:27px; }
@@ -126,6 +126,143 @@
     @media(max-width:900px) { .app { grid-template-columns:1fr; } .sidebar { position:fixed; width:238px; transform:translateX(-100%); transition:transform .2s; } .sidebar.open { transform:none; } .drawer-shade.open { display:block; position:fixed; inset:0; background:#0009; z-index:19; } .mobile-menu { display:inline-flex; } .main { padding:0 18px 35px; } .explorer { grid-template-columns:1fr; } .list-scroll,.detail { max-height:none; } }
     @media(max-width:600px) { .topbar { align-items:flex-start; padding:16px 0; flex-direction:column; } .top-actions { justify-content:flex-start; } .stats,.charts,.overview-bottom,.health-grid { grid-template-columns:1fr 1fr; } .charts .panel,.overview-bottom .panel { grid-column:1/-1; } .facts { grid-template-columns:1fr; } .metric strong { font-size:22px; } }
     @media(max-width:400px) { .stats,.health-grid { grid-template-columns:1fr; } }
+
+    /* Console rhythm and hierarchy */
+    body { font-size:14px; line-height:1.45; }
+    .app { grid-template-columns:248px minmax(0,1fr); }
+    .brand { padding:24px; gap:12px; }
+    .brand-mark { width:32px; height:32px; border:0; border-radius:50%; background:var(--teal); color:#14201d; font-size:14px; font-weight:700; }
+    .brand strong { font-size:16px; letter-spacing:0; font-weight:650; }
+    .brand small { margin-top:2px; font-size:11px; text-transform:none; letter-spacing:0; }
+    .nav { padding:20px 12px; gap:4px; }
+    .nav button { min-height:36px; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:500; color:var(--muted); }
+    .nav button:hover,.nav button.active { background:#252c30; color:var(--text); }
+    .nav button.active { box-shadow:inset 2px 0 var(--teal); font-weight:600; }
+    .sidebar-foot { padding:16px 24px; font-size:12px; }
+    .main { padding:0 32px 48px; }
+    .topbar { min-height:88px; margin-bottom:32px; }
+    .kicker { color:var(--muted); font-size:12px; font-weight:500; text-transform:none; letter-spacing:0; }
+    h1 { margin:2px 0 4px; font-size:30px; font-weight:650; letter-spacing:-.035em; }
+    h2 { font-size:16px; font-weight:600; letter-spacing:-.01em; }
+    h3 { font-size:13px; font-weight:600; }
+    .top-meta,.updated { font-size:12px; }
+    .top-actions { gap:8px; }
+    .button { border-color:#465056; background:#252c30; font-size:12px; font-weight:600; }
+    .button:hover { background:#30383d; }
+    .button.primary { background:#dbe9e5; border-color:#dbe9e5; color:#16221f; }
+    .button.primary:hover { background:#f0f6f3; }
+    .button.danger { border-color:#795352; color:#f2b9b5; background:#322626; }
+    .pill,.badge { border-color:var(--line); color:var(--muted); background:#252b2f; font-weight:600; text-transform:none; }
+    .pill.good,.badge.resolved,.badge.healthy { color:var(--green); border-color:#38594a; background:#202e27; }
+    .pill.bad,.badge.high,.badge.critical,.badge.degraded,.badge.unavailable { color:#f0aaa5; border-color:#624241; background:#302325; }
+    .badge.medium { color:var(--amber); border-color:#67543b; background:#2f291f; }
+    .badge.low,.badge.informational,.badge.unknown,.badge.stopped { color:var(--muted); border-color:var(--line); background:#252b2f; }
+    #health-pill::before { content:""; width:6px; height:6px; margin-right:8px; border-radius:50%; background:var(--teal); }
+    #health-pill.bad::before { background:var(--red); }
+    .section-heading { margin-bottom:16px; }
+    .section-heading p,.panel-head p { font-size:13px; }
+    .grid { gap:16px; }
+    .stats { grid-template-columns:repeat(3,minmax(0,1fr)); margin-bottom:24px; }
+    .panel,.metric { border-radius:12px; }
+    .metric { padding:20px 24px; }
+    .metric span { font-size:12px; font-weight:500; }
+    .metric strong { margin-top:8px; font-size:30px; font-weight:650; font-variant-numeric:tabular-nums; }
+    .metric small { margin-top:4px; font-size:11px; }
+    .charts { grid-template-columns:minmax(0,1.75fr) minmax(260px,1fr); margin-bottom:24px; }
+    .charts .panel:first-child { grid-row:span 2; }
+    .panel-pad { padding:24px; }
+    .panel-head { padding:16px 20px; }
+    .chart-title { margin-bottom:4px; }
+    .chart-subtitle { font-size:12px; }
+    .activity { min-height:224px; gap:8px; padding-top:24px; }
+    .day-bar { width:min(100%,40px); background:var(--teal); }
+    .day-label { font-size:11px; }
+    .bar-row { grid-template-columns:minmax(88px,1fr) 2fr 28px; gap:12px; margin:12px 0; font-size:12px; }
+    .bar-row strong { text-align:right; font-variant-numeric:tabular-nums; }
+    .bar-track { height:6px; background:#30383e; }
+    .overview-bottom { grid-template-columns:1fr 1fr 1fr; }
+    .row { padding:16px 20px; }
+    .row:hover,.row.selected { background:#252c30; }
+    .row strong { font-weight:600; }
+    .row-meta,.health-card p,.record-meta { font-size:12px; }
+    .empty,.error-state { font-size:13px; }
+    .filters { padding:16px; gap:8px; }
+    input,select,textarea { background:#12171a; border-color:#465056; border-radius:8px; padding:10px 12px; font-size:13px; }
+    input::placeholder,textarea::placeholder { color:#8c999a; }
+    .detail { padding:24px; }
+    .detail-intro { font-size:13px; }
+    .detail-section h3 { color:var(--text); }
+    .fact,.record { background:#151a1e; border-radius:8px; }
+    .fact dt { font-size:11px; text-transform:none; letter-spacing:0; }
+    .fact dd,.record,.coverage-table { font-size:13px; }
+    summary { font-size:12px; font-weight:600; }
+    pre { color:#c4cece; font-size:12px; }
+    .toast { background:#252c30; border-color:var(--line); box-shadow:0 12px 32px #0005; }
+    .toast.error { background:#302325; border-color:#624241; }
+    @media(max-width:1250px) { .charts { grid-template-columns:1fr 1fr; } .charts .panel:first-child { grid-column:1/-1; grid-row:auto; } .charts .panel:last-child { grid-column:auto; } .overview-bottom { grid-template-columns:1fr 1fr; } }
+    @media(max-width:900px) { .app { grid-template-columns:1fr; } .sidebar { width:248px; } .main { padding:0 24px 40px; } }
+    @media(max-width:600px) { .main { padding:0 16px 32px; } .topbar { min-height:0; margin-bottom:24px; } .stats { grid-template-columns:1fr 1fr; } .charts,.overview-bottom { grid-template-columns:1fr; } .charts .panel:first-child,.charts .panel:last-child,.overview-bottom .panel:last-child { grid-column:auto; } .panel-pad { padding:20px; } .metric { padding:16px; } .metric strong { font-size:26px; } .activity { min-height:180px; } .day-bar { max-height:140px; } }
+    @media(max-width:400px) { .stats,.health-grid { grid-template-columns:1fr; } }
+    /* Analyst workspace */
+    .sidebar { background:#151a1e; }
+    .brand { min-height:88px; }
+    .brand-mark { border-radius:9px; background:#24443f; color:var(--teal); border:1px solid #3a6860; }
+    .nav { display:block; }
+    .nav-group { display:block; margin:22px 16px 8px; color:#899798; font-size:11px; font-weight:600; letter-spacing:.02em; }
+    .nav-group:first-child { margin-top:0; }
+    .nav button { display:block; width:100%; margin:2px 0; }
+    .nav button.active { background:#26332f; color:#e4f5ef; }
+    .sidebar-foot { background:#14191c; }
+    .topbar { min-height:88px; margin-bottom:0; border-bottom:0; }
+    .top-actions .button.quiet { color:var(--muted); }
+    .command-bar { display:flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:10px; background:var(--surface); padding:8px; margin-bottom:28px; }
+    .command-bar label { padding:0 12px; color:var(--muted); font-size:12px; font-weight:600; white-space:nowrap; border-right:1px solid var(--line); }
+    .command-bar input { flex:1 1 auto; border:0; background:transparent; min-width:80px; padding:8px; }
+    .command-bar input:focus { outline:none; }
+    .command-bar:focus-within { border-color:#5a8b82; }
+    .command-bar select { width:132px; background:#20262b; border-color:var(--line); }
+    .command-bar button { white-space:nowrap; }
+    .overview-heading { align-items:center; }
+    .overview-heading h2 { font-size:19px; }
+    .overview-actions { display:flex; flex-wrap:wrap; gap:8px; }
+    .stats { grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:20px; }
+    .metric { width:100%; text-align:left; cursor:pointer; min-height:118px; transition:background .16s,border-color .16s; }
+    .metric:hover { background:#22292e; border-color:#55615f; }
+    .metric:focus-visible { position:relative; z-index:1; }
+    .metric strong { font-size:29px; }
+    .metric-emphasis strong { color:var(--teal); }
+    .charts { gap:12px; margin-bottom:20px; }
+    .panel-title-row { display:flex; align-items:start; justify-content:space-between; gap:16px; }
+    .panel-title-row p { margin:4px 0 0; }
+    .chart-total { font-size:34px; line-height:1; font-weight:600; font-variant-numeric:tabular-nums; color:var(--teal); }
+    .activity-panel { display:flex; flex-direction:column; }
+    .activity { flex:1; min-height:234px; border-bottom:1px solid #465056; background:repeating-linear-gradient(to top, transparent 0, transparent 47px, #2e363a 48px); }
+    .day { display:flex; flex-direction:column; justify-content:end; align-items:center; height:220px; }
+    .day-count { height:20px; color:var(--text); font-size:11px; font-variant-numeric:tabular-nums; }
+    .day-bar { border-radius:3px 3px 0 0; background:#6fb9aa; }
+    .day:last-child .day-bar { background:#9ad8ca; }
+    .day-label { font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .overview-bottom { grid-template-columns:minmax(0,1.25fr) minmax(0,1.1fr) minmax(280px,.9fr); gap:12px; }
+    .text-action { border:0; padding:0; background:transparent; color:var(--teal); font:inherit; font-size:12px; font-weight:600; white-space:nowrap; }
+    .text-action:hover { text-decoration:underline; }
+    .overview-bottom .panel-head p { color:var(--muted); }
+    .overview-bottom .row { min-height:80px; }
+    .overview-bottom .row-top strong { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; overflow:hidden; }
+    .coverage-overview { padding:18px 0 14px; }
+    .coverage-count { font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; }
+    .coverage-track { width:100%; height:7px; border-radius:8px; margin-top:12px; background:#30383e; overflow:hidden; }
+    .coverage-fill { display:block; height:100%; background:var(--teal); border-radius:8px; }
+    .collector-line { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 0; border-top:1px solid var(--line); font-size:12px; text-transform:capitalize; }
+    .collector-line .badge { flex:none; }
+    .explorer { grid-template-columns:minmax(340px,.85fr) minmax(450px,1.15fr); }
+    .filters { background:#1b2125; }
+    .detail { background:#191e23; }
+    @media(max-width:1150px) { .overview-bottom { grid-template-columns:1fr 1fr; } .overview-bottom .panel:last-child { grid-column:1/-1; } .stats { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media(max-width:1050px) { .overview-bottom { grid-template-columns:1fr; } .overview-bottom .panel:last-child { grid-column:auto; } .command-bar label { display:none; } }
+    @media(max-width:900px) { .topbar { padding:16px 0; } }
+    @media(max-width:600px) { .top-actions { width:100%; justify-content:flex-start; } .overview-heading { flex-direction:column; align-items:stretch; } .overview-actions { width:100%; } .overview-actions .button { flex:1; } .command-bar { flex-wrap:wrap; } .command-bar input { flex-basis:100%; } .command-bar select { width:auto; flex:1 1 calc(100% - 104px); } .command-bar button { flex:0 0 88px; } .stats { grid-template-columns:1fr 1fr; } .metric { min-height:104px; } .metric strong { font-size:26px; } .activity { min-height:190px; } .day { height:166px; } .day-bar { max-height:136px; } .chart-total { font-size:28px; } }
+    @media(max-width:400px) { .stats { grid-template-columns:1fr; } }
+    @media(prefers-reduced-motion:reduce) { .sidebar,.metric { transition:none; } }
   </style>
 </head>
 <body>
@@ -134,41 +271,46 @@
     <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
       <div class="brand"><span class="brand-mark" aria-hidden="true">R</span><div><strong>RT-HID</strong><small>Host security console</small></div></div>
       <nav class="nav" id="navigation" aria-label="Sections">
-        <button class="active" data-view="overview" type="button" aria-current="page"><span class="nav-icon" aria-hidden="true">▦</span>Overview</button>
-        <button data-view="alerts" type="button"><span class="nav-icon" aria-hidden="true">!</span>Alerts</button>
-        <button data-view="incidents" type="button"><span class="nav-icon" aria-hidden="true">◇</span>Incidents</button>
-        <button data-view="processes" type="button"><span class="nav-icon" aria-hidden="true">⌘</span>Processes</button>
-        <button data-view="network" type="button"><span class="nav-icon" aria-hidden="true">◎</span>Network</button>
-        <button data-view="files" type="button"><span class="nav-icon" aria-hidden="true">▤</span>File integrity</button>
-        <button data-view="persistence" type="button"><span class="nav-icon" aria-hidden="true">⌁</span>Persistence</button>
-        <button data-view="intelligence" type="button"><span class="nav-icon" aria-hidden="true">◎</span>Intelligence</button>
-        <button data-view="rules" type="button"><span class="nav-icon" aria-hidden="true">≡</span>Rules / ATT&amp;CK</button>
-        <button data-view="operations" type="button"><span class="nav-icon" aria-hidden="true">⚒</span>Operations</button>
-        <button data-view="collectors" type="button"><span class="nav-icon" aria-hidden="true">◈</span>Collectors</button>
-        <button data-view="settings" type="button"><span class="nav-icon" aria-hidden="true">⚙</span>Settings / About</button>
+        <span class="nav-group">Workspace</span>
+        <button class="active" data-view="overview" type="button" aria-current="page">Overview</button>
+        <button data-view="alerts" type="button">Alerts</button>
+        <button data-view="incidents" type="button">Incidents</button>
+        <span class="nav-group">Telemetry</span>
+        <button data-view="processes" type="button">Processes</button>
+        <button data-view="network" type="button">Network</button>
+        <button data-view="files" type="button">File integrity</button>
+        <button data-view="persistence" type="button">Persistence</button>
+        <span class="nav-group">Detection</span>
+        <button data-view="intelligence" type="button">Intelligence</button>
+        <button data-view="rules" type="button">Rules / ATT&amp;CK</button>
+        <span class="nav-group">System</span>
+        <button data-view="operations" type="button">Operations</button>
+        <button data-view="collectors" type="button">Collectors</button>
+        <button data-view="settings" type="button">Settings / About</button>
       </nav>
       <div class="sidebar-foot">Local dashboard · bound to this host<br>Indicators require investigation.</div>
     </aside>
     <main class="main">
       <header class="topbar">
-        <div><div class="kicker">Endpoint monitoring</div><h1 id="view-title">Overview</h1><div class="top-meta" id="host-label">Loading host status…</div></div>
+        <div><div class="kicker">Host monitor</div><h1 id="view-title">Overview</h1><div class="top-meta" id="host-label">Loading host status…</div></div>
         <div class="top-actions"><button id="mobile-menu" class="button quiet mobile-menu" type="button" aria-label="Open navigation" aria-expanded="false">Menu</button><span class="pill" id="health-pill">Connecting</span><span class="updated" id="updated">Last updated —</span><button class="button" id="refresh" type="button">Refresh</button><button class="button quiet" id="sign-out" type="button">Sign out</button></div>
       </header>
+      <form class="command-bar" id="global-search" role="search"><label for="global-query">Search evidence</label><input id="global-query" type="search" maxlength="100" placeholder="IP, user, process, rule, or file path" aria-label="Search evidence"><select id="global-scope" aria-label="Search section"><option value="alerts">Alerts</option><option value="incidents">Incidents</option><option value="network">Network</option><option value="processes">Processes</option><option value="files">Files</option><option value="persistence">Persistence</option></select><button class="button" type="submit">Search</button></form>
 
       <section class="view" id="view-overview" aria-label="Overview">
-        <div class="section-heading"><div><h2>Security overview</h2><p>Stored incidents, alerts, and collector status for this host.</p></div></div>
+        <div class="section-heading overview-heading"><div><h2>Operations snapshot</h2><p>Live collector posture and stored detections for this host.</p></div><div class="overview-actions"><button class="button" id="open-incidents" type="button">Review open incidents</button><button class="button" id="high-alerts" type="button">High severity alerts</button></div></div>
         <div class="grid stats" id="overview-stats"></div>
         <div class="grid charts">
-          <section class="panel panel-pad"><h2 class="chart-title">Incident activity</h2><p class="chart-subtitle">New incidents by UTC day · last 7 days</p><div class="activity" id="activity"></div></section>
-          <section class="panel panel-pad"><h2 class="chart-title">Alert severity</h2><p class="chart-subtitle">Excludes false positives</p><div id="severity-chart"></div></section>
-          <section class="panel panel-pad"><h2 class="chart-title">Detection categories</h2><p class="chart-subtitle">Stored incidents by category</p><div id="category-chart"></div></section>
+          <section class="panel panel-pad activity-panel"><div class="panel-title-row"><div><h2 class="chart-title">Incident activity</h2><p class="chart-subtitle">New incidents by UTC day · last 7 days</p></div><strong id="activity-total" class="chart-total">0</strong></div><div class="activity" id="activity" role="img" aria-label="Incident activity over the last seven UTC days"></div></section>
+          <section class="panel panel-pad"><div class="panel-title-row"><div><h2 class="chart-title">Alert severity</h2><p class="chart-subtitle">Stored alerts excluding false positives</p></div></div><div id="severity-chart"></div></section>
+          <section class="panel panel-pad"><div class="panel-title-row"><div><h2 class="chart-title">Detection categories</h2><p class="chart-subtitle">Stored incidents by category</p></div></div><div id="category-chart"></div></section>
         </div>
-        <div class="grid overview-bottom"><section class="panel"><div class="panel-head"><h2>Recent alerts</h2></div><div id="recent-alerts" class="list"></div></section><section class="panel"><div class="panel-head"><h2>Recent incidents</h2></div><div id="recent-incidents" class="list"></div></section><section class="panel panel-pad"><h2>Host status</h2><div id="host-summary"></div></section></div>
+        <div class="grid overview-bottom"><section class="panel"><div class="panel-head panel-title-row"><div><h2>Open incident queue</h2><p>Newest cases awaiting review</p></div><button class="text-action" id="all-incidents" type="button">View all</button></div><div id="recent-incidents" class="list"></div></section><section class="panel"><div class="panel-head panel-title-row"><div><h2>Recent alerts</h2><p>Latest detections</p></div><button class="text-action" id="all-alerts" type="button">View all</button></div><div id="recent-alerts" class="list"></div></section><section class="panel panel-pad"><div class="panel-title-row"><div><h2>Collector coverage</h2><p class="chart-subtitle">Latest scan state</p></div><button class="text-action" id="all-collectors" type="button">Details</button></div><div id="host-summary"></div></section></div>
       </section>
 
-      <section class="view" id="view-alerts" hidden><div class="section-heading"><div><h2>Alerts explorer</h2><p>Search and review detections recorded on this host.</p></div></div><div class="explorer"><section class="panel"><div class="filters"><input id="alerts-search" type="search" placeholder="Search alerts" aria-label="Search alerts"><select id="alerts-severity" aria-label="Alert severity"><option value="all">All severities</option><option>critical</option><option>high</option><option>medium</option><option>low</option><option>informational</option></select><select id="alerts-status" aria-label="Alert status"><option value="all">All statuses</option><option>new</option><option>acknowledged</option><option>resolved</option><option>false_positive</option></select><input id="alerts-rule" type="search" placeholder="Rule ID" aria-label="Filter by rule ID"><select id="alerts-order" aria-label="Alert order"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div><div id="alerts-list" class="list-scroll"></div><div id="alerts-pager" class="pager"></div></section><section class="panel"><div class="panel-head"><h2>Alert detail</h2></div><div id="alerts-detail" class="detail"><div class="empty">Select an alert to inspect its evidence.</div></div></section></div></section>
+      <section class="view" id="view-alerts" hidden><div class="section-heading"><div><h2>Alerts</h2><p>Search and review detections recorded on this host.</p></div></div><div class="explorer"><section class="panel"><div class="filters"><input id="alerts-search" type="search" placeholder="Search alerts" aria-label="Search alerts"><select id="alerts-severity" aria-label="Alert severity"><option value="all">All severities</option><option>critical</option><option>high</option><option>medium</option><option>low</option><option>informational</option></select><select id="alerts-status" aria-label="Alert status"><option value="all">All statuses</option><option>new</option><option>acknowledged</option><option>resolved</option><option>false_positive</option></select><input id="alerts-rule" type="search" placeholder="Rule ID" aria-label="Filter by rule ID"><select id="alerts-order" aria-label="Alert order"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div><div id="alerts-list" class="list-scroll"></div><div id="alerts-pager" class="pager"></div></section><section class="panel"><div class="panel-head"><h2>Alert detail</h2></div><div id="alerts-detail" class="detail"><div class="empty">Select an alert to inspect its evidence.</div></div></section></div></section>
 
-      <section class="view" id="view-incidents" hidden><div class="section-heading"><div><h2>Incident investigation</h2><p>Indicators for review, not proof of compromise.</p></div></div><div class="explorer"><section class="panel"><div class="filters"><input id="incidents-search" type="search" placeholder="Search incidents" aria-label="Search incidents"><select id="incidents-state" aria-label="Incident state"><option value="all">All states</option><option>new</option><option>updated</option><option>acknowledged</option><option>resolved</option></select><select id="incidents-severity" aria-label="Incident severity"><option value="all">All severities</option><option>critical</option><option>high</option><option>medium</option><option>low</option><option>informational</option></select><select id="incidents-order" aria-label="Incident order"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div><div id="incidents-list" class="list-scroll"></div><div id="incidents-pager" class="pager"></div></section><section class="panel"><div class="panel-head"><h2>Investigation detail</h2></div><div id="incidents-detail" class="detail"><div class="empty">Select an incident to inspect its evidence.</div></div></section></div></section>
+      <section class="view" id="view-incidents" hidden><div class="section-heading"><div><h2>Incident investigation</h2><p>Indicators for review, not proof of compromise.</p></div></div><div class="explorer"><section class="panel"><div class="filters"><input id="incidents-search" type="search" placeholder="Search incidents" aria-label="Search incidents"><select id="incidents-state" aria-label="Incident state"><option value="all">All states</option><option value="open">Open incidents</option><option>new</option><option>updated</option><option>acknowledged</option><option>resolved</option></select><select id="incidents-severity" aria-label="Incident severity"><option value="all">All severities</option><option>critical</option><option>high</option><option>medium</option><option>low</option><option>informational</option></select><select id="incidents-order" aria-label="Incident order"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div><div id="incidents-list" class="list-scroll"></div><div id="incidents-pager" class="pager"></div></section><section class="panel"><div class="panel-head"><h2>Investigation detail</h2></div><div id="incidents-detail" class="detail"><div class="empty">Select an incident to inspect its evidence.</div></div></section></div></section>
 
       <section class="view" id="view-processes" hidden><div class="section-heading"><div><h2>Process events</h2><p>Historical start and stop events, not a live process inventory.</p></div></div><div class="explorer"><section class="panel"><div class="filters"><input id="processes-search" type="search" placeholder="Name, PID, user, or path" aria-label="Search process events"><select id="processes-action" aria-label="Process event type"><option value="all">Start and stop</option><option value="start">Starts</option><option value="stop">Stops</option></select><select id="processes-order" aria-label="Process event order"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div><div id="processes-list" class="list-scroll"></div><div id="processes-pager" class="pager"></div></section><section class="panel"><div class="panel-head"><h2>Process evidence</h2></div><div id="processes-detail" class="detail"><div class="empty">Select a process event.</div></div></section></div></section>
 
@@ -293,9 +435,11 @@
       pill.classList.toggle('good', degraded.length === 0);
       $('#updated').textContent = `Updated ${new Date().toLocaleTimeString()}`;
     }
-    function metric(name, value, note) {
-      const box = element('div', 'metric');
+    function metric(name, value, note, onClick, emphasis = false) {
+      const box = element('button', `metric${emphasis ? ' metric-emphasis' : ''}`);
+      box.type = 'button';
       box.append(element('span', '', name), element('strong', '', value), element('small', '', note));
+      box.addEventListener('click', onClick);
       return box;
     }
     function bars(target, groups, names = null) {
@@ -320,12 +464,10 @@
       const healthy = collectors.filter(item => healthState(item) === 'healthy').length;
       const degraded = collectors.length - healthy;
       $('#overview-stats').replaceChildren(
-        metric('Total incidents', counts.incidents ?? '—', 'Stored incidents'),
-        metric('Open incidents', counts.open_incidents ?? '—', 'Not resolved'),
-        metric('High / critical alerts', counts.high_alerts ?? '—', 'Excludes false positives'),
-        metric('All alerts', counts.alerts ?? '—', 'Stored alerts'),
-        metric('Healthy collectors', healthy, 'Latest scan status'),
-        metric('Need attention', degraded, 'Degraded or stopped'),
+        metric('Open incidents', counts.open_incidents ?? '—', `${counts.incidents ?? 0} stored in total`, () => jumpTo('incidents', { state:'open' }), (counts.open_incidents || 0) > 0),
+        metric('High / critical alerts', counts.high_alerts ?? '—', 'Excludes false positives', () => jumpTo('alerts', { severity:'priority', status:'active' }), (counts.high_alerts || 0) > 0),
+        metric('All alerts', counts.alerts ?? '—', 'Stored detections', () => jumpTo('alerts')),
+        metric('Collector coverage', `${healthy}/${collectors.length}`, degraded ? `${degraded} need attention` : 'Latest scans healthy', () => showView('collectors'), degraded > 0),
       );
       const chart = $('#activity');
       chart.replaceChildren();
@@ -334,13 +476,17 @@
       const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
       const days = Array.from({ length:7 }, (_, index) => new Date(midnight - (6 - index) * 86400000).toISOString().slice(0, 10));
       const max = Math.max(1, ...days.map(day => byDay.get(day) || 0));
+      const total = days.reduce((sum, day) => sum + (byDay.get(day) || 0), 0);
+      $('#activity-total').textContent = String(total);
+      $('#activity-total').title = `${total} incidents in the last 7 UTC days`;
+      chart.setAttribute('aria-label', days.map(day => `${day}: ${byDay.get(day) || 0} incidents`).join('; '));
       for (const day of days) {
         const item = element('div', 'day');
         const bar = element('span', 'day-bar');
         const count = byDay.get(day) || 0;
-        bar.style.height = `${Math.max(3, count * 95 / max)}px`;
+        bar.style.height = `${Math.max(3, count * 176 / max)}px`;
         bar.title = `${day} UTC · ${count} incident${count === 1 ? '' : 's'}`;
-        item.append(bar, element('span', 'day-label', day.slice(5)));
+        item.append(element('span', 'day-count', count ? count : ''), bar, element('span', 'day-label', day.slice(5)));
         chart.append(item);
       }
       bars($('#severity-chart'), counts.severity_counts || {}, ['critical','high','medium','low','informational']);
@@ -351,21 +497,33 @@
       if (!alerts.items?.length) recentAlerts.append(empty('No alerts recorded.'));
       const recentIncidents = $('#recent-incidents');
       recentIncidents.replaceChildren();
-      for (const item of incidents.items || []) recentIncidents.append(row(item.title || item.category || 'Incident', [dateTime(item.last_seen), item.subject], item.state, () => { showView('incidents'); selectIncident(item.incident_id); }));
-      if (!incidents.items?.length) recentIncidents.append(empty('No incidents recorded.'));
+      for (const item of incidents.items || []) recentIncidents.append(row(item.title || item.category || 'Incident', [item.state, item.subject, dateTime(item.last_seen)], item.severity, () => { jumpTo('incidents', { state:'open' }); selectIncident(item.incident_id); }));
+      if (!incidents.items?.length) recentIncidents.append(empty('No open incidents.'));
       const host = $('#host-summary');
       host.replaceChildren();
-      facts(host, [['Hostname',state.status?.hostname],['Operating system',`${state.status?.platform?.system || ''} ${state.status?.platform?.release || ''}`.trim()],['Host ID',state.status?.host_id],['Agent','Monitoring locally'],['Last successful collection',collectors.map(item => item.last_success).filter(Boolean).sort().at(-1) ? dateTime(collectors.map(item => item.last_success).filter(Boolean).sort().at(-1)) : 'None yet']]);
-      const errors = collectors.filter(item => item.last_error).slice(0, 3);
-      for (const item of errors) host.append(element('p', 'record-meta', `${item.collector_id}: ${safeCollectorError(item.last_error)}`));
+      const coverage = element('div', 'coverage-overview');
+      coverage.append(element('strong', 'coverage-count', `${healthy} of ${collectors.length} healthy`));
+      const track = element('div', 'coverage-track');
+      const fill = element('span', 'coverage-fill');
+      fill.style.width = `${collectors.length ? 100 * healthy / collectors.length : 0}%`;
+      track.append(fill);
+      coverage.append(track);
+      host.append(coverage);
+      for (const item of collectors) {
+        const line = element('div', 'collector-line');
+        line.append(element('span', '', item.collector_id.replaceAll('_',' ')), badge(healthState(item)));
+        host.append(line);
+      }
+      if (!collectors.length) host.append(empty('No collectors enabled.'));
     }
     function filterSignature(view) {
       if(view === 'operations') return JSON.stringify([state.offset.jobs,state.offset.audit]);
       const ids = view === 'alerts' ? ['search','severity','status','rule','order'] : view === 'incidents' ? ['search','state','severity','order'] : ['search','action','order'];
-      return JSON.stringify([state.offset[view] || 0,...ids.map(name => $(`#${view}-${name}`)?.value ?? '')]);
+      return JSON.stringify([state.offset[view] || 0,...ids.map(name => $(`#${view}-${name}`)?.value ?? ''), $(`#${view}-since`)?.value ?? 'all']);
     }
     function params(view) {
       const result = new URLSearchParams({ limit:'25', offset:String(state.offset[view] || 0), order:$(`#${view}-order`)?.value || 'newest', q:$(`#${view}-search`)?.value.trim() || '' });
+      result.set('since', $(`#${view}-since`)?.value || 'all');
       if (view === 'alerts') { result.set('severity',$('#alerts-severity').value); result.set('status',$('#alerts-status').value); result.set('rule',$('#alerts-rule').value.trim()); }
       else if (view === 'incidents') { result.set('state',$('#incidents-state').value); result.set('severity',$('#incidents-severity').value); }
       else { result.set('kind',eventKinds[view]); result.set('action',$(`#${view}-action`)?.value || 'all'); }
@@ -399,7 +557,7 @@
     }
     async function loadView(view, signature) {
       if (view === 'overview') {
-        const [alerts, incidents] = await Promise.all([getJSON('/api/alert-page?limit=5'),getJSON('/api/incident-page?limit=5')]);
+        const [alerts, incidents] = await Promise.all([getJSON('/api/alert-page?limit=5'),getJSON('/api/incident-page?limit=5&state=open')]);
         if (state.view === view) renderOverview(alerts, incidents);
       } else if (view === 'collectors') renderCollectors();
       else if (view === 'intelligence') {
@@ -457,6 +615,17 @@
       $('#sidebar').classList.remove('open'); $('#drawer-shade').classList.remove('open');
       $('#mobile-menu').setAttribute('aria-expanded','false');
       refresh();
+    }
+    function jumpTo(view, filters = {}) {
+      for (const input of document.querySelectorAll(`#view-${view} .filters input, #view-${view} .filters select`)) {
+        input.value = input.tagName === 'SELECT' ? input.options[0].value : '';
+      }
+      for (const [name, value] of Object.entries(filters)) {
+        const input = $(`#${view}-${name}`);
+        if (input) input.value = value;
+      }
+      state.offset[view] = 0;
+      showView(view);
     }
     async function performAction(buttonNode, path, success, data = null, confirmation = null) {
       if (confirmation && !window.confirm(confirmation)) return false;
@@ -715,7 +884,34 @@
       const about = section(target,'Scope and limits');
       about.append(element('p','detail-intro','RT-HID stores evidence locally and serves this dashboard on loopback. Collection is polling based and may miss short-lived processes or listeners. Alerts are indicators for investigation; the agent does not block or quarantine threats.'));
     }
+    for (const select of [$('#alerts-severity'), $('#incidents-severity')]) select.add(new Option('High + critical', 'priority'), 1);
+    $('#alerts-status').add(new Option('Not false positive', 'active'), 1);
+    for (const view of ['alerts','incidents','processes','network','files','persistence']) {
+      const windowSelect = element('select');
+      windowSelect.id = `${view}-since`;
+      windowSelect.setAttribute('aria-label', 'Time window');
+      for (const [value, text] of [['all','All time'],['24h','Last 24 hours'],['7d','Last 7 days'],['30d','Last 30 days']]) windowSelect.add(new Option(text, value));
+      const order = $(`#${view}-order`);
+      order.parentNode.insertBefore(windowSelect, order);
+    }
     for (const item of document.querySelectorAll('#navigation button')) item.addEventListener('click',() => showView(item.dataset.view));
+    $('#global-search').addEventListener('submit', event => {
+      event.preventDefault();
+      const query = $('#global-query').value.trim();
+      if (!query) { $('#global-query').focus(); return; }
+      const view = $('#global-scope').value;
+      jumpTo(view, { search:query });
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === '/' && !event.altKey && !event.ctrlKey && !event.metaKey && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) {
+        event.preventDefault(); $('#global-query').focus();
+      }
+    });
+    $('#open-incidents').addEventListener('click', () => jumpTo('incidents', { state:'open' }));
+    $('#high-alerts').addEventListener('click', () => jumpTo('alerts', { severity:'priority', status:'active' }));
+    $('#all-incidents').addEventListener('click', () => jumpTo('incidents'));
+    $('#all-alerts').addEventListener('click', () => jumpTo('alerts'));
+    $('#all-collectors').addEventListener('click', () => showView('collectors'));
     for (const view of ['alerts','incidents','processes','network','files','persistence']) {
       for (const input of document.querySelectorAll(`#view-${view} .filters input, #view-${view} .filters select`)) {
         let timer;

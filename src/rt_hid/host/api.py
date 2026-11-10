@@ -5,7 +5,7 @@ import secrets
 import threading
 import time
 from collections import defaultdict, deque
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import Flask, Response, abort, g, jsonify, redirect, render_template_string, request, session, url_for
@@ -19,9 +19,9 @@ from . import AGENT_VERSION
 PAGE = Path(__file__).with_name("dashboard.html").read_text(encoding="utf-8")
 LOGIN_PAGE = Path(__file__).with_name("login.html").read_text(encoding="utf-8")
 CHANGE_PASSWORD_PAGE = Path(__file__).with_name("change_password.html").read_text(encoding="utf-8")
-VALID_STATES = {"all", "new", "updated", "acknowledged", "resolved"}
-VALID_SEVERITIES = {"all", "informational", "low", "medium", "high", "critical"}
-VALID_ALERT_STATUSES = {"all", "new", "acknowledged", "resolved", "false_positive"}
+VALID_STATES = {"all", "open", "new", "updated", "acknowledged", "resolved"}
+VALID_SEVERITIES = {"all", "priority", "informational", "low", "medium", "high", "critical"}
+VALID_ALERT_STATUSES = {"all", "active", "new", "acknowledged", "resolved", "false_positive"}
 EVENT_KINDS = {
     "process": ("process_start", "process_stop"),
     "network": ("network_listen", "network_connection"),
@@ -73,6 +73,15 @@ def create_app(agent: HostAgent) -> Flask:
         if len(query) > 100:
             abort(400, "search query is too long")
         return limit, offset, order, query
+
+    def page_since() -> str | None:
+        window = request.args.get("since", "all")
+        if window == "all":
+            return None
+        hours = {"24h": 24, "7d": 168, "30d": 720}.get(window)
+        if hours is None:
+            abort(400, "invalid time window")
+        return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
 
     @app.errorhandler(HTTPException)
     def api_errors(error: HTTPException):
@@ -243,7 +252,7 @@ def create_app(agent: HostAgent) -> Flask:
         return jsonify(agent.database.page_incidents(
             limit=limit, offset=offset,
             state=state,
-            severity=severity, order=order, query=query,
+            severity=severity, order=order, query=query, since=page_since(),
         ))
 
     @app.get("/api/alert-page")
@@ -256,7 +265,7 @@ def create_app(agent: HostAgent) -> Flask:
             abort(400, "invalid alert filter")
         return jsonify(agent.database.page_alerts(
             limit=limit, offset=offset, order=order, query=query,
-            severity=severity, status=alert_status, rule=rule,
+            severity=severity, status=alert_status, rule=rule, since=page_since(),
         ))
 
     @app.get("/api/event-page")
@@ -268,7 +277,7 @@ def create_app(agent: HostAgent) -> Flask:
             abort(400, "invalid event filter")
         return jsonify(agent.database.page_events(
             event_types=EVENT_KINDS[kind], limit=limit, offset=offset,
-            query=query, action=action, order=order,
+            query=query, action=action, order=order, since=page_since(),
         ))
 
     @app.get("/api/settings")

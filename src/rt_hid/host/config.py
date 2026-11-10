@@ -45,7 +45,7 @@ class HostConfig:
     network_unusual_ports: list[int] = field(default_factory=lambda: [4444, 5555, 6667, 9001])
     network_destination_allowlist: list[str] = field(default_factory=list)
     network_repeat_threshold: int = 5
-    threat_intelligence_enabled: bool = False
+    threat_intelligence_enabled: bool = True
     sysmon_enabled: bool = False
     persistence_enabled: bool = False
     persistence_paths: list[Path] = field(default_factory=list)

@@ -33,7 +33,7 @@ class HostAlertManager:
                        or detection.evidence.get("username") or detection.evidence.get("port")
                        or detection.evidence.get("process_name") or "host")
             correlation_key = detection.evidence.get('correlation_key')
-            group = f"{detection.host_id}|{detection.rule_id}|{correlation_key or detection.evidence.get('process_identity') or subject}"
+            group = f"{detection.host_id}|{detection.rule_id}|{correlation_key or detection.evidence.get('indicator_value') or detection.evidence.get('process_identity') or subject}"
             now = _timestamp(detection.timestamp)
             previous = self._last_by_group.get(group)
             if previous and now - previous < timedelta(seconds=self.config.alert_cooldown_seconds) and not correlation_key:

@@ -22,7 +22,8 @@ class PortableNetworkCollector(Collector):
         current, events, errors = set(), [], 0
         sockets = psutil.net_connections(kind="inet")
         limited = sockets[:20000]
-        listeners = {(item.pid, item.laddr.port) for item in limited if item.laddr and item.status == "LISTEN"}
+        listeners = {(int(item.type), int(item.laddr.port)) for item in limited
+                     if item.laddr and item.status == "LISTEN"}
         self._listener_ports.update(listeners)
         if len(self._listener_ports) > 10000:
             self._listener_ports = listeners
@@ -37,7 +38,7 @@ class PortableNetworkCollector(Collector):
                 identity = (item.pid, protocol, item.laddr.ip, item.laddr.port, *remote)
                 # A snapshot can contain both inbound accepted sockets and outbound sockets.
                 listener = item.status == "LISTEN"
-                outbound = bool(item.raddr) and item.status in {"ESTABLISHED", "SYN_SENT", "NONE"} and (item.pid, item.laddr.port) not in self._listener_ports
+                outbound = bool(item.raddr) and item.status in {"ESTABLISHED", "SYN_SENT", "NONE"} and (int(item.type), int(item.laddr.port)) not in self._listener_ports
                 if not listener and not outbound:
                     continue
                 if item.pid not in owners:

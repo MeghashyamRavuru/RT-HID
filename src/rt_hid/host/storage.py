@@ -303,18 +303,25 @@ class HostDatabase:
 
     def page_incidents(
         self, limit: int = 25, offset: int = 0, state: str = "all", query: str = "",
-        severity: str = "all", order: str = "newest",
+        severity: str = "all", order: str = "newest", since: str | None = None,
     ) -> dict[str, Any]:
         limit = max(1, min(limit, 100))
         offset = max(0, offset)
         clauses: list[str] = []
         params: list[Any] = []
-        if state != "all":
+        if state == "open":
+            clauses.append("state != 'resolved'")
+        elif state != "all":
             clauses.append("state = ?")
             params.append(state)
-        if severity != "all":
+        if severity == "priority":
+            clauses.append("json_extract(payload, '$.severity') IN ('high', 'critical')")
+        elif severity != "all":
             clauses.append("json_extract(payload, '$.severity') = ?")
             params.append(severity)
+        if since is not None:
+            clauses.append("last_seen >= ?")
+            params.append(since)
         if query:
             clauses.append("(payload LIKE ? ESCAPE '\\' OR EXISTS ("
                            "SELECT 1 FROM alerts WHERE alerts.incident_id = incidents.incident_id "
@@ -385,15 +392,22 @@ class HostDatabase:
 
     def page_alerts(self, limit: int = 25, offset: int = 0, query: str = "",
                     severity: str = "all", status: str = "all", rule: str = "",
-                    order: str = "newest") -> dict[str, Any]:
+                    order: str = "newest", since: str | None = None) -> dict[str, Any]:
         clauses: list[str] = []
         params: list[Any] = []
-        if severity != "all":
+        if severity == "priority":
+            clauses.append("severity IN ('high', 'critical')")
+        elif severity != "all":
             clauses.append("severity = ?")
             params.append(severity)
-        if status != "all":
+        if status == "active":
+            clauses.append("status != 'false_positive'")
+        elif status != "all":
             clauses.append("status = ?")
             params.append(status)
+        if since is not None:
+            clauses.append("last_seen >= ?")
+            params.append(since)
         if rule:
             clauses.append("json_extract(payload, '$.rule_id') = ?")
             params.append(rule)
@@ -403,13 +417,17 @@ class HostDatabase:
         return self._page_payloads("alerts", "last_seen", clauses, params, limit, offset, order)
 
     def page_events(self, event_types: tuple[str, ...], limit: int = 25, offset: int = 0,
-                    query: str = "", action: str = "all", order: str = "newest") -> dict[str, Any]:
+                    query: str = "", action: str = "all", order: str = "newest",
+                    since: str | None = None) -> dict[str, Any]:
         placeholders = ",".join("?" for _ in event_types)
         clauses = [f"event_type IN ({placeholders})"]
         params: list[Any] = list(event_types)
         if action != "all":
             clauses.append("json_extract(payload, '$.action') = ?")
             params.append(action)
+        if since is not None:
+            clauses.append("timestamp >= ?")
+            params.append(since)
         if query:
             clauses.append("payload LIKE ? ESCAPE '\\'")
             params.append(_like_pattern(query))
