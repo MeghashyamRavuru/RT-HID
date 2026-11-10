@@ -18,7 +18,7 @@ The portable psutil collector now emits `network_connection` as well as existing
 
 Rules HIDS-NET-002/003/004 detect configured unusual ports, repeated observations, and interpreters using unusual ports. Destination CIDR allowlists suppress these heuristics. Rule HIDS-IOC-001 matches local hash, exact IP and observed domain indicators. Matching is disabled by default (`threat_intelligence_enabled`). No DNS lookup, feed download or telemetry upload occurs. JSON and CSV imports validate all records before committing, normalize and upsert by type/value, preserve original first_seen, and ignore disabled/expired indicators. Source, confidence, severity and tags remain in match evidence.
 
-Migration 3 adds indicators and persistence baseline storage. `/api/intelligence` supports pagination; `/import` supports JSON/CSV; PATCH toggles enablement and DELETE removes a record. These routes share authentication and CSRF protections with the existing app.
+Migration 3 adds indicators and persistence baseline storage. `/api/intelligence` supports pagination; `/import` supports local JSON/CSV records and STIX 2.1 JSON bundles; PATCH toggles enablement and DELETE removes a record. These routes share authentication and CSRF protections with the existing app.
 
 Phase 2 validation: the full suite passed 48 tests.
 
@@ -135,6 +135,8 @@ Example IOC JSON:
 ```
 
 CSV uses the same column names; tags use semicolons. IP indicators accept `ip`, `ipv4` or `ipv6` and normalize to exact compressed addresses. Domain matching requires an observed destination hostname (for example from Sysmon); it does not perform DNS enrichment. JSON/CSV imports are limited to 1 MiB and 5,000 records. Rule settings accept `enabled`, `severity`, `confidence`, `allowlist` and supported `threshold` values. Allowlists are arrays of exact conditions over executable_path, file_path, username, parent_name and destination_ip; all fields in one condition must match.
+
+STIX 2.1 bundles can be pasted into the Intelligence form with JSON selected. The importer reads indicator objects with a single exact equality for `ipv4-addr:value`, `ipv6-addr:value`, `domain-name:value` or `file:hashes.'SHA-256'`. Other bundle objects are ignored; unsupported indicator patterns cause the entire import to fail before any records are saved. STIX confidence from 0 to 100 is converted to local confidence from 0 to 1. The STIX indicator ID is retained as its source, indicator types become tags, `valid_from` delays matching, `valid_until` sets expiry, and revoked indicators are disabled. This is a limited STIX pattern subset, not a general STIX pattern evaluator.
 
 ## Platform support and validation limits
 

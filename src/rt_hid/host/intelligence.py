@@ -11,6 +11,61 @@ from datetime import datetime, timezone
 from .models import Detection, SEVERITIES, utc_now
 
 
+_STIX_PATTERN = re.compile(
+    r"\[\s*(ipv4-addr:value|ipv6-addr:value|domain-name:value|file:hashes\.'SHA-256')\s*=\s*'([^'\\]{1,512})'\s*\]",
+    re.IGNORECASE)
+
+
+def _stix_records(bundle):
+    if bundle.get('type') != 'bundle' or bundle.get('spec_version') != '2.1':
+        raise ValueError('expected a STIX 2.1 bundle')
+    objects = bundle.get('objects')
+    if not isinstance(objects, list) or not 1 <= len(objects) <= 5000:
+        raise ValueError('expected 1 to 5000 STIX objects')
+    records = []
+    kinds = {'ipv4-addr:value': 'ipv4', 'ipv6-addr:value': 'ipv6',
+             'domain-name:value': 'domain', "file:hashes.'sha-256'": 'sha256'}
+    for item in objects:
+        if not isinstance(item, dict):
+            raise ValueError('invalid STIX object')
+        if item.get('type') != 'indicator':
+            continue
+        if item.get('spec_version') != '2.1' or item.get('pattern_type') != 'stix':
+            raise ValueError('unsupported STIX indicator version or pattern type')
+        stix_id = item.get('id')
+        if not isinstance(stix_id, str) or not re.fullmatch(
+            r'indicator--[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}', stix_id):
+            raise ValueError('invalid STIX indicator ID')
+        if not item.get('valid_from'):
+            raise ValueError('STIX indicator valid_from is required')
+        pattern = item.get('pattern')
+        match = _STIX_PATTERN.fullmatch(pattern) if isinstance(pattern, str) else None
+        if match is None:
+            raise ValueError('unsupported STIX pattern; use one exact IP, domain or SHA-256 comparison')
+        confidence = item.get('confidence', 50)
+        if type(confidence) is not int or not 0 <= confidence <= 100:
+            raise ValueError('STIX confidence must be an integer from 0 to 100')
+        name, description = item.get('name', ''), item.get('description', '')
+        if not isinstance(name, str) or not isinstance(description, str):
+            raise ValueError('invalid STIX indicator name or description')
+        details = ': '.join(part for part in (name, description) if part)
+        tags = item.get('indicator_types', [])
+        if not isinstance(tags, list):
+            raise ValueError('invalid STIX indicator types')
+        enabled = item.get('revoked', False)
+        if not isinstance(enabled, bool):
+            raise ValueError('invalid STIX revoked flag')
+        records.append({'type': kinds[match.group(1).lower()], 'value': match.group(2),
+                        'source': 'STIX ' + stix_id, 'description': details,
+                        'confidence': confidence / 100, 'tags': tags,
+                        'first_seen': item.get('created'), 'last_seen': item.get('modified'),
+                        'valid_from': item.get('valid_from'), 'expires_at': item.get('valid_until'),
+                        'enabled': not enabled})
+    if not records:
+        raise ValueError('STIX bundle has no supported indicators')
+    return records
+
+
 def normalize(kind, value):
     if not isinstance(kind,str) or not isinstance(value, str) or len(value) > 512:
         raise ValueError("invalid indicator value")
@@ -54,6 +109,8 @@ class Intelligence:
             records = json.loads(text) if format == "json" else list(csv.DictReader(io.StringIO(text)))
         except (ValueError, csv.Error):
             raise ValueError("invalid IOC import") from None
+        if format == 'json' and isinstance(records, dict):
+            records = _stix_records(records)
         if not isinstance(records, list) or not 1 <= len(records) <= 5000:
             raise ValueError("expected 1 to 5000 IOC records")
         normalized = [self.validate(record) for record in records]
@@ -68,7 +125,7 @@ class Intelligence:
         return {"imported": len(normalized), "unique": len({(r['type'], r['value']) for r in normalized})}
 
     def validate(self, record):
-        if not isinstance(record, dict) or set(record) - {"type", "value", "source", "description", "confidence", "severity", "first_seen", "last_seen", "expires_at", "tags", "enabled"}:
+        if not isinstance(record, dict) or set(record) - {"type", "value", "source", "description", "confidence", "severity", "first_seen", "last_seen", "valid_from", "expires_at", "tags", "enabled"}:
             raise ValueError("unsupported indicator fields")
         kind, value = normalize(record.get('type'), record.get('value'))
         source = record.get('source', 'local')
@@ -98,7 +155,7 @@ class Intelligence:
         if not isinstance(tags, list) or len(tags) > 16 or any(not isinstance(tag, str) or len(tag) > 64 for tag in tags):
             raise ValueError("invalid IOC tags")
         dates = {}
-        for key in ('first_seen', 'last_seen', 'expires_at'):
+        for key in ('first_seen', 'last_seen', 'valid_from', 'expires_at'):
             value_date = record.get(key)
             try:
                 parsed = datetime.fromisoformat(value_date.replace('Z', '+00:00')) if value_date else None
@@ -107,16 +164,24 @@ class Intelligence:
                 dates[key] = parsed.astimezone(timezone.utc).isoformat() if parsed else None
             except (ValueError, AttributeError, TypeError):
                 raise ValueError("IOC dates must include a timezone") from None
+        if dates['valid_from'] and dates['expires_at'] and dates['expires_at'] <= dates['valid_from']:
+            raise ValueError('IOC expiry must follow valid_from')
         return {'indicator_id': uuid.uuid4().hex, 'type': kind, 'value': value, 'source': source, 'description': description,
             'confidence': confidence, 'severity': severity, 'enabled': enabled, 'tags': tags,
-            'first_seen': dates['first_seen'] or utc_now(), 'last_seen': dates['last_seen'] or utc_now(), 'expires_at': dates['expires_at']}
+            'first_seen': dates['first_seen'] or utc_now(), 'last_seen': dates['last_seen'] or utc_now(),
+            'valid_from': dates['valid_from'], 'expires_at': dates['expires_at']}
 
     def page(self, limit, offset):
         with self.database._lock:
             total = self.database.connection.execute("SELECT COUNT(*) FROM indicators").fetchone()[0]
             rows = self.database.connection.execute("SELECT payload FROM indicators ORDER BY type,value LIMIT ? OFFSET ?", (limit,offset)).fetchall()
         now = utc_now()
-        return {"items": [{**json.loads(row[0]), "expired": bool(json.loads(row[0]).get('expires_at') and json.loads(row[0])['expires_at'] <= now)} for row in rows], "total": total, "limit": limit, "offset": offset, "matching_enabled": self.config.threat_intelligence_enabled}
+        items = []
+        for row in rows:
+            item = json.loads(row[0])
+            items.append({**item, 'expired': bool(item.get('expires_at') and item['expires_at'] <= now),
+                          'not_yet_valid': bool(item.get('valid_from') and item['valid_from'] > now)})
+        return {"items": items, "total": total, "limit": limit, "offset": offset, "matching_enabled": self.config.threat_intelligence_enabled}
 
     def set_enabled(self, key, enabled):
         if not isinstance(enabled, bool):
@@ -148,9 +213,12 @@ class Intelligence:
                     kind, value = normalize(kind, value)
                 except ValueError:
                     continue
-                row = self.database.connection.execute("SELECT payload FROM indicators WHERE type=? AND value=? AND enabled=1 AND (expires_at IS NULL OR expires_at>?)", (kind, value, utc_now())).fetchone()
+                now = utc_now()
+                row = self.database.connection.execute("SELECT payload FROM indicators WHERE type=? AND value=? AND enabled=1 AND (expires_at IS NULL OR expires_at>?)", (kind, value, now)).fetchone()
                 if row:
-                    matches.append(json.loads(row[0]))
+                    indicator = json.loads(row[0])
+                    if not indicator.get('valid_from') or indicator['valid_from'] <= now:
+                        matches.append(indicator)
         if not matches:
             return []
         ranking = {key: index for index, key in enumerate(("informational", "low", "medium", "high", "critical"))}
