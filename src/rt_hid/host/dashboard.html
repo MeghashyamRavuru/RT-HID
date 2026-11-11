@@ -291,6 +291,160 @@
     @media(max-width:700px) { .charts { grid-template-columns:1fr; } .charts .panel:first-child,.charts .panel:last-child { grid-column:auto; } .activity svg { height:180px; } .activity.activity-is-empty { min-height:200px; } }
     @media(max-width:600px) { .main { padding-inline:16px; } }
     @media(prefers-reduced-motion:reduce) { .sidebar,.metric { transition:none; } }
+    /* Alerts: dense investigation queue */
+    .alerts-active .command-bar { display:none; }
+    #view-alerts { --alert-line:var(--line); }
+    .alerts-heading { align-items:center; margin:8px 0 24px; }
+    .alerts-heading h2 { font-size:30px; font-weight:650; letter-spacing:-.03em; }
+    .alerts-heading p { margin-top:6px; font-size:14px; }
+    .alerts-heading-actions { display:flex; align-items:center; gap:12px; width:min(650px,60%); }
+    .alerts-heading-actions input { width:100%; min-height:48px; padding-left:42px; background:#25313c; border:1px solid transparent; font-size:14px; }
+    .alerts-heading-actions .search-wrap { position:relative; flex:1; min-width:180px; }
+    .alerts-heading-actions .search-wrap::before { content:""; position:absolute; left:17px; top:15px; width:15px; height:15px; border:2px solid #c7d0d0; border-radius:50%; pointer-events:none; }
+    .alerts-heading-actions .search-wrap::after { content:""; position:absolute; left:31px; top:31px; width:8px; height:2px; background:#c7d0d0; transform:rotate(48deg); transform-origin:left center; pointer-events:none; }
+    .alerts-heading-actions select { min-height:48px; min-width:158px; padding:0 14px; background:#1b252d; border-color:#657581; font-size:14px; }
+    #view-alerts .explorer { display:block; }
+    #view-alerts .explorer > .panel:first-child { background:transparent; border:0; border-radius:0; overflow:visible; }
+    #view-alerts .filters { align-items:center; gap:12px; padding:0 0 20px; background:transparent; border-bottom:1px solid var(--alert-line); }
+    #view-alerts .filters-label { font-size:14px; font-weight:600; margin-right:4px; }
+    #view-alerts .filters select,#view-alerts .filters input { flex:none; width:auto; min-height:42px; padding:0 13px; background:#1b252d; border:1px solid #657581; border-radius:10px; font-size:13px; }
+    #view-alerts .filters #alerts-rule { width:160px; }
+    #view-alerts .filters #alerts-order { width:142px; }
+    #view-alerts .filters #alerts-severity { min-width:142px; }
+    #view-alerts .filters #alerts-status { min-width:142px; }
+    .alerts-clear { margin-left:auto; padding:8px 0; border:0; background:none; color:#85c9bd; text-decoration:underline; text-underline-offset:3px; font-size:13px; }
+    .alerts-chips { display:flex; flex-wrap:wrap; gap:8px; min-height:76px; align-items:flex-start; padding:16px 0 20px; }
+    .alerts-chip { display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border:1px solid transparent; border-radius:24px; background:#2b3741; color:var(--text); font-size:12px; }
+    .alerts-chip:hover,.alerts-chip[aria-pressed="true"] { border-color:#657581; background:#344858; }
+    .alerts-chip .severity-dot { width:13px; height:13px; }
+    .alerts-chip .chip-check { color:var(--muted); font-size:15px; line-height:1; }
+    .severity-dot { display:inline-block; width:15px; height:15px; border:4px solid currentColor; border-radius:50%; flex:none; }
+    .severity-dot.critical { color:#e54e42; }.severity-dot.high { color:#ef9c58; }.severity-dot.medium { color:#e8cd4e; }.severity-dot.low { color:#47c77c; }.severity-dot.informational { color:#86b8ce; }
+    #view-alerts .list-scroll { max-height:none; overflow:visible; }
+    .alert-table-wrap { overflow:visible; border-radius:10px; background:#151c23; }
+    .alert-table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:13px; }
+    .alert-table th { height:52px; padding:12px 16px; text-align:left; font-size:12px; font-weight:650; color:#e7eef1; border-bottom:1px solid var(--alert-line); white-space:nowrap; }
+    .alert-table td { height:72px; padding:12px 16px; border-bottom:1px solid #2b3942; vertical-align:middle; }
+    .alert-table tr:last-child td { border-bottom:0; }
+    .alert-table tbody tr:hover,.alert-table tbody tr.selected { background:#233543; }
+    .alert-table tbody tr { cursor:pointer; }
+    .alert-table th:nth-child(1) { width:110px; }.alert-table th:nth-child(2) { width:42%; }.alert-table th:nth-child(3) { width:16%; }.alert-table th:nth-child(4) { width:140px; }.alert-table th:nth-child(5) { width:160px; }.alert-table th:nth-child(6) { width:66px; }
+    .alert-id { font-weight:650; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .alert-title { display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:#f0f3f2; font-size:14px; }
+    .alert-subtitle { display:block; margin-top:5px; color:var(--muted); font-size:11px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+    .alert-rule { display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:#c6d0d7; }
+    .alert-badge { display:inline-flex; align-items:center; gap:7px; max-width:100%; border-radius:24px; padding:8px 10px; background:#2b3741; white-space:nowrap; font-size:12px; text-transform:capitalize; }
+    .alert-status-dot { width:8px; height:8px; flex:none; border-radius:50%; background:#92a2a3; }
+    .alert-status-dot.resolved { background:#42c878; }.alert-status-dot.acknowledged { background:#e2aa69; }.alert-status-dot.false_positive { background:#a789e5; }.alert-status-dot.new { background:#e88364; }
+    .alert-actions { position:relative; }
+    .alert-actions summary { list-style:none; display:grid; place-items:center; width:34px; height:34px; border-radius:7px; color:#f1f4f3; font-size:20px; line-height:1; }
+    .alert-actions summary::-webkit-details-marker { display:none; }
+    .alert-actions summary:hover,.alert-actions[open] summary { background:#344858; }
+    .alert-menu { position:absolute; top:38px; right:0; z-index:8; width:210px; padding:5px; background:#101a22; border:1px solid #50616d; border-radius:8px; box-shadow:0 16px 32px #0008; }
+    .alert-menu button { display:block; width:100%; border:0; border-radius:5px; background:transparent; color:var(--text); text-align:left; padding:10px; font-size:12px; }
+    .alert-menu button:hover { background:#2a4050; }
+    .alert-table tbody tr:nth-last-child(-n+3) .alert-menu { top:auto; bottom:38px; }
+    #view-alerts .pager { border-top:0; padding:16px 0; }
+    .alert-detail-shade { display:none; position:fixed; inset:0; z-index:29; background:#0009; }
+    .alert-detail-shade.open { display:block; }
+    #view-alerts .alert-detail-panel { display:none; position:fixed; top:0; right:0; bottom:0; z-index:30; width:min(560px,100vw); border:0; border-left:1px solid var(--line); border-radius:0; background:var(--surface); box-shadow:-20px 0 50px #0008; overflow:auto; }
+    #view-alerts .alert-detail-panel.open { display:block; }
+    .alert-detail-panel .panel-head { display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:1; background:var(--surface); }
+    @media(max-width:1300px) { .alert-table-wrap { overflow-x:auto; }.alert-table { min-width:980px; } .alerts-heading-actions { width:min(550px,58%); } }
+    @media(max-width:700px) { .alerts-heading { align-items:stretch; flex-direction:column; }.alerts-heading-actions { width:100%; }.alerts-heading h2 { font-size:26px; }.alerts-chips { min-height:0; }.alert-table { min-width:700px; }.alert-table th:nth-child(3),.alert-table td:nth-child(3) { display:none; } }
+    @media(max-width:500px) { .alerts-heading-actions { flex-wrap:wrap; }.alerts-heading-actions .search-wrap { flex-basis:100%; }.alerts-heading-actions select { width:100%; }.alert-table { min-width:560px; }.alert-table th:nth-child(5),.alert-table td:nth-child(5) { display:none; } }
+    /* Unified investigation surfaces */
+    :root { --bg:#11161d; --sidebar:#0b2029; --surface:#1b252f; --surface2:#25313c; --line:#34414a; --text:#f1f4f5; --muted:#aab7bd; --teal:#69b1fa; --red:#ed8c86; --amber:#e7bf79; --green:#80d3a1; }
+    .sidebar { background:#0b2029; border-right-color:#28404c; }
+    .sidebar-foot { background:#0a1c24; border-top-color:#28404c; }
+    .brand-mark { background:#183c59; border-color:#4d9ee9; color:#b7dbfb; }
+    .nav button:hover,.nav button.active { background:#1a394b; color:#eff7fc; }
+    .nav button.active { box-shadow:inset 3px 0 #69b1fa; }
+    .main { background:var(--bg); }
+    .topbar { border-bottom:1px solid #2c3b46; margin-bottom:24px; }
+    .command-bar { background:#1b252f; border-color:#34414a; }
+    .command-bar select,.filters { background:#202b35; }
+    input,select,textarea { background:#141d25; border-color:#4a5b66; }
+    .button { background:#273543; border-color:#506371; }
+    .button:hover { background:#34495b; }
+    .button.primary { background:#3186d9; border-color:#4297e9; color:white; }
+    .button.primary:hover { background:#4a9aec; }
+    .text-action { color:#86c2fb; }
+    .row:hover,.row.selected { background:#26394a; }
+    .row.selected { box-shadow:inset 3px 0 #69b1fa; }
+    .fact,.record { background:#17212a; }
+    .bar-fill,.day-bar,.coverage-fill { background:#69b1fa; }
+    .trend-line { stroke:#69b1fa; }.trend-point { stroke:#69b1fa; }.trend-point-current { fill:#69b1fa; }.trend-area { fill:rgba(105,177,250,.09); }
+    .alerts-clear { color:#8bc3fa; }
+    #view-alerts .filters { background:transparent; }
+    .incidents-active .command-bar { display:none; }
+    #view-incidents .section-heading { align-items:center; }
+    #view-incidents .list-scroll { padding-top:0; }
+    .queue-view .section-heading { margin:8px 0 24px; align-items:end; }
+    .queue-view .section-heading h2 { font-size:28px; letter-spacing:-.03em; }
+    .queue-view .section-heading p { font-size:13px; }
+    .queue-view .explorer { display:block; }
+    .queue-view .explorer > .panel:first-child { border:0; border-radius:0; background:transparent; overflow:visible; }
+    .queue-view .filters { padding:0 0 20px; gap:12px; border-bottom:1px solid var(--line); background:transparent; align-items:center; }
+    .queue-view .filters input { flex:2 1 240px; }
+    .queue-view .filters select { flex:1 1 140px; min-width:130px; }
+    .queue-view .filters input,.queue-view .filters select { min-height:42px; background:#1b252d; border-color:#657581; border-radius:9px; }
+    .queue-view .list-scroll { max-height:none; overflow:visible; padding-top:20px; }
+    .queue-view .pager { border-top:0; padding:16px 0; }
+    .queue-view .queue-detail-panel { display:none; position:fixed; top:0; right:0; bottom:0; z-index:30; width:min(620px,100vw); overflow:auto; border:0; border-left:1px solid var(--line); border-radius:0; background:var(--surface); box-shadow:-20px 0 50px #0008; }
+    .queue-view .queue-detail-panel.open { display:block; }
+    .queue-detail-panel .panel-head { position:sticky; top:0; z-index:1; display:flex; justify-content:space-between; align-items:center; background:var(--surface); }
+    .queue-shade { display:none; position:fixed; inset:0; z-index:29; background:#0009; }
+    .queue-shade.open { display:block; }
+    .queue-table-wrap { border-radius:10px; background:#151c23; overflow:visible; }
+    .queue-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+    .queue-table th { height:52px; padding:12px 16px; border-bottom:1px solid var(--line); color:#e7eef1; text-align:left; font-size:12px; font-weight:650; white-space:nowrap; }
+    .queue-table td { height:72px; padding:12px 16px; border-bottom:1px solid #2b3942; font-size:13px; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; }
+    .queue-table td:last-child { overflow:visible; }
+    .queue-table tr:last-child td { border-bottom:0; }
+    .queue-table tbody tr { cursor:pointer; }
+    .queue-table tbody tr:hover,.queue-table tbody tr.selected { background:#233543; }
+    .queue-table th:first-child { width:110px; }.queue-table th:nth-child(2) { width:34%; }.queue-table th:last-child { width:66px; }
+    .queue-title { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); font-size:14px; font-weight:550; }
+    .queue-subtitle { display:block; margin-top:5px; color:var(--muted); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .queue-id { font-variant-numeric:tabular-nums; font-weight:650; white-space:nowrap; }
+    .queue-value { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .queue-pill { display:inline-flex; align-items:center; gap:8px; border-radius:20px; padding:7px 10px; background:#2b3741; font-size:12px; text-transform:capitalize; white-space:nowrap; }
+    .queue-pill::before { content:""; width:8px; height:8px; border-radius:50%; background:#a5b6bf; flex:none; }
+    .queue-pill.critical::before { background:#e65c54; }.queue-pill.high::before { background:#efa465; }.queue-pill.medium::before { background:#e9d16c; }.queue-pill.low::before { background:#66ce91; }.queue-pill.resolved::before { background:#66ce91; }.queue-pill.acknowledged::before,.queue-pill.updated::before { background:#e9b86e; }.queue-pill.new::before { background:#ec806a; }
+    .queue-actions { position:relative; overflow:visible; }
+    .queue-actions summary { list-style:none; display:grid; place-items:center; width:32px; height:32px; border-radius:6px; font-size:20px; color:var(--text); }
+    .queue-actions summary::-webkit-details-marker { display:none; }
+    .queue-actions summary:hover,.queue-actions[open] summary { background:#344858; }
+    .queue-actions-menu { position:absolute; top:36px; right:0; z-index:8; width:190px; padding:5px; background:#101a22; border:1px solid #50616d; border-radius:8px; box-shadow:0 16px 32px #0008; }
+    .queue-actions-menu button { display:block; width:100%; padding:10px; border:0; border-radius:5px; background:transparent; color:var(--text); text-align:left; font-size:12px; }
+    .queue-actions-menu button:hover { background:#2a4050; }
+    .queue-table tbody tr:nth-last-child(-n+3) .queue-actions-menu { top:auto; bottom:36px; }
+    .process-graph-panel { margin:0 0 24px; overflow:hidden; background:#151b22; }
+    .process-graph-panel .panel-head { display:flex; justify-content:space-between; gap:16px; align-items:center; }
+    .process-graph-panel .panel-head p { margin:4px 0 0; }
+    .graph-stage { min-height:240px; padding:32px 24px; overflow-x:auto; }
+    .graph-empty { display:grid; place-items:center; min-height:180px; color:var(--muted); text-align:center; }
+    .graph-lineage { display:flex; align-items:center; min-width:max-content; }
+    .graph-link { width:44px; height:2px; background:#5a97d1; flex:none; position:relative; }
+    .graph-link::after { content:""; position:absolute; right:-2px; top:-4px; width:8px; height:8px; border-top:2px solid #5a97d1; border-right:2px solid #5a97d1; transform:rotate(45deg); }
+    .graph-node { width:160px; min-height:124px; padding:16px; border:1px solid #4a6a85; border-radius:12px; background:#1d2b39; color:var(--text); }
+    .graph-node.selected { border-color:#66b4ff; background:#1d3c58; box-shadow:inset 0 0 0 1px #66b4ff; }
+    .graph-node.child { border-color:#4d6575; background:#1b2934; }
+    .graph-node .graph-icon { display:grid; place-items:center; width:28px; height:28px; margin-bottom:12px; border:1px solid #68aff0; border-radius:50%; color:#a9d5fa; font-size:14px; }
+    .graph-node strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:650; }
+    .graph-node small { display:block; margin-top:4px; color:#afc1cc; font-size:11px; font-variant-numeric:tabular-nums; }
+    .graph-drop { height:24px; width:2px; background:#5a97d1; }
+    .graph-children { display:flex; gap:12px; padding:24px 0 0; border-top:2px solid #5a97d1; min-width:max-content; }
+    .graph-children-label { display:block; color:#adbfca; font-size:12px; font-weight:600; margin-bottom:10px; }
+    .graph-note { color:var(--muted); font-size:12px; margin:16px 0 0; }
+    .graph-meta { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; padding:18px 20px; border-top:1px solid var(--line); background:#222e3a; }
+    .graph-meta span { display:block; color:var(--muted); font-size:11px; margin-bottom:6px; }
+    .graph-meta strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:550; }
+    .queue-view .queue-detail-panel .detail,#view-alerts .alert-detail-panel .detail { max-height:none; overflow:visible; }
+    @media(max-width:1200px) { .queue-table-wrap { overflow-x:auto; }.queue-table { min-width:900px; }.graph-meta { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media(max-width:800px) { #view-incidents .section-heading { align-items:stretch; flex-direction:column; }#view-incidents .alerts-heading-actions { width:100%; } }
+    @media(max-width:700px) { .queue-view .section-heading h2 { font-size:24px; }.queue-view .filters { gap:8px; }.queue-view .filters input { flex-basis:100%; }.graph-stage { padding:24px 16px; }.graph-meta { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
@@ -336,7 +490,35 @@
         <div class="grid overview-bottom"><section class="panel"><div class="panel-head panel-title-row"><div><h2>Open incident queue</h2><p>Newest cases awaiting review</p></div><button class="text-action" id="all-incidents" type="button">View all</button></div><div id="recent-incidents" class="list"></div></section><section class="panel"><div class="panel-head panel-title-row"><div><h2>Recent alerts</h2><p>Latest detections</p></div><button class="text-action" id="all-alerts" type="button">View all</button></div><div id="recent-alerts" class="list"></div></section><section class="panel panel-pad"><div class="panel-title-row"><div><h2>Collector coverage</h2><p class="chart-subtitle">Latest scan state</p></div><button class="text-action" id="all-collectors" type="button">Details</button></div><div id="host-summary"></div></section></div>
       </section>
 
-      <section class="view" id="view-alerts" hidden><div class="section-heading"><div><h2>Alerts</h2><p>Search and review detections recorded on this host.</p></div></div><div class="explorer"><section class="panel"><div class="filters"><input id="alerts-search" type="search" placeholder="Search alerts" aria-label="Search alerts"><select id="alerts-severity" aria-label="Alert severity"><option value="all">All severities</option><option>critical</option><option>high</option><option>medium</option><option>low</option><option>informational</option></select><select id="alerts-status" aria-label="Alert status"><option value="all">All statuses</option><option>new</option><option>acknowledged</option><option>resolved</option><option>false_positive</option></select><input id="alerts-rule" type="search" placeholder="Rule ID" aria-label="Filter by rule ID"><select id="alerts-order" aria-label="Alert order"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div><div id="alerts-list" class="list-scroll"></div><div id="alerts-pager" class="pager"></div></section><section class="panel"><div class="panel-head"><h2>Alert detail</h2></div><div id="alerts-detail" class="detail"><div class="empty">Select an alert to inspect its evidence.</div></div></section></div></section>
+      <section class="view" id="view-alerts" hidden>
+        <div class="section-heading alerts-heading">
+          <div><h2>Alerts</h2><p id="alerts-count">Loading alerts…</p></div>
+          <div class="alerts-heading-actions">
+            <div class="search-wrap"><input id="alerts-search" type="search" maxlength="100" placeholder="Search alerts…" aria-label="Search alerts"></div>
+            <select id="alerts-since" aria-label="Alert time window"><option value="7d">Last 7 days</option><option value="24h">Last 24 hours</option><option value="30d">Last 30 days</option><option value="all">All time</option></select>
+          </div>
+        </div>
+        <div class="explorer">
+          <section class="panel">
+            <div class="filters">
+              <span class="filters-label">Filters</span>
+              <select id="alerts-severity" aria-label="Alert severity"><option value="all">Severity: All</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="informational">Informational</option><option value="priority">High + Critical</option></select>
+              <select id="alerts-status" aria-label="Alert status"><option value="all">Status: All</option><option value="new">New</option><option value="acknowledged">Acknowledged</option><option value="resolved">Resolved</option><option value="false_positive">False positive</option><option value="active">Active</option></select>
+              <input id="alerts-rule" type="search" maxlength="100" placeholder="Rule ID" aria-label="Filter by rule ID">
+              <select id="alerts-order" aria-label="Alert order"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select>
+              <button id="alerts-clear" class="alerts-clear" type="button">Clear filters</button>
+            </div>
+            <div id="alerts-chips" class="alerts-chips" aria-label="Severity shortcuts"></div>
+            <div id="alerts-list" class="list-scroll"></div>
+            <div id="alerts-pager" class="pager"></div>
+          </section>
+          <div id="alert-detail-shade" class="alert-detail-shade"></div>
+          <section class="panel alert-detail-panel" id="alert-detail-panel" aria-label="Alert detail">
+            <div class="panel-head"><h2>Alert detail</h2><button class="button quiet" id="alert-detail-close" type="button" aria-label="Close alert detail">Close</button></div>
+            <div id="alerts-detail" class="detail"><div class="empty">Select an alert to inspect its evidence.</div></div>
+          </section>
+        </div>
+      </section>
 
       <section class="view" id="view-incidents" hidden><div class="section-heading"><div><h2>Incident investigation</h2><p>Indicators for review, not proof of compromise.</p></div></div><div class="explorer"><section class="panel"><div class="filters"><input id="incidents-search" type="search" placeholder="Search incidents" aria-label="Search incidents"><select id="incidents-state" aria-label="Incident state"><option value="all">All states</option><option value="open">Open incidents</option><option>new</option><option>updated</option><option>acknowledged</option><option>resolved</option></select><select id="incidents-severity" aria-label="Incident severity"><option value="all">All severities</option><option>critical</option><option>high</option><option>medium</option><option>low</option><option>informational</option></select><select id="incidents-order" aria-label="Incident order"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div><div id="incidents-list" class="list-scroll"></div><div id="incidents-pager" class="pager"></div></section><section class="panel"><div class="panel-head"><h2>Investigation detail</h2></div><div id="incidents-detail" class="detail"><div class="empty">Select an incident to inspect its evidence.</div></div></section></div></section>
 
@@ -375,6 +557,73 @@
     const relative = (value) => value ? dateTime(value) : 'No successful scan';
     const badge = (value) => element('span', `badge ${String(value || 'unknown').toLowerCase()}`, value || 'unknown');
     const empty = (message, error = false) => element('div', error ? 'error-state' : 'empty', message);
+    function closeQueueDetail(view) {
+      $('#'+view+'-detail-panel')?.classList.remove('open');
+      $('#'+view+'-detail-shade')?.classList.remove('open');
+    }
+    function openQueueDetail(view) {
+      $('#'+view+'-detail-panel')?.classList.add('open');
+      $('#'+view+'-detail-shade')?.classList.add('open');
+    }
+    function setupQueueViews() {
+      for (const view of ['incidents','processes','network','files','persistence']) {
+        const sectionNode = $('#view-'+view);
+        sectionNode.classList.add('queue-view');
+        const explorer = sectionNode.querySelector('.explorer');
+        const panel = explorer.querySelectorAll(':scope > .panel')[1];
+        panel.classList.add('queue-detail-panel');
+        panel.id = view+'-detail-panel';
+        const shade = element('div','queue-shade');
+        shade.id = view+'-detail-shade';
+        shade.addEventListener('click',() => closeQueueDetail(view));
+        explorer.insertBefore(shade,panel);
+        const close = button('Close',() => closeQueueDetail(view),'button quiet');
+        close.setAttribute('aria-label','Close '+view+' detail');
+        panel.querySelector('.panel-head').append(close);
+      }
+      const incidentView = $('#view-incidents');
+      const incidentHeading = incidentView.querySelector('.section-heading');
+      const headingActions = element('div','alerts-heading-actions');
+      const searchWrap = element('div','search-wrap');
+      const incidentSearch = $('#incidents-search');
+      incidentSearch.placeholder = 'Search incidents…';
+      searchWrap.append(incidentSearch);
+      const timeSelect = element('select');
+      timeSelect.id = 'incidents-since';
+      timeSelect.setAttribute('aria-label','Incident time window');
+      for (const [value,text] of [['7d','Last 7 days'],['24h','Last 24 hours'],['30d','Last 30 days'],['all','All time']]) timeSelect.add(new Option(text,value));
+      headingActions.append(searchWrap,timeSelect);
+      incidentHeading.append(headingActions);
+      const incidentFilters = incidentView.querySelector('.filters');
+      const clear = button('Clear filters',() => {
+        incidentSearch.value = '';
+        $('#incidents-state').value = 'all';
+        $('#incidents-severity').value = 'all';
+        $('#incidents-order').value = 'newest';
+        timeSelect.value = '7d';
+        state.offset.incidents = 0;
+        refresh();
+      },'alerts-clear');
+      incidentFilters.append(clear);
+      const chips = element('div','alerts-chips');
+      chips.id = 'incidents-chips';
+      chips.setAttribute('aria-label','Incident severity shortcuts');
+      incidentFilters.after(chips);
+      const processView = $('#view-processes');
+      const graph = element('section','panel process-graph-panel');
+      graph.id = 'process-graph-panel';
+      const head = element('div','panel-head');
+      const textBlock = element('div');
+      textBlock.append(element('h2','','Process relationship'),element('p','','Verified ancestry and recorded children for a selected process'));
+      head.append(textBlock);
+      const canvas = element('div','graph-stage');
+      canvas.id = 'process-graph';
+      canvas.append(element('div','graph-empty','Select a process event to inspect its recorded relationships.'));
+      const meta = element('div','graph-meta');
+      meta.id = 'process-graph-meta';
+      graph.append(head,canvas,meta);
+      processView.querySelector('.section-heading').after(graph);
+    }
     function toast(message, error = false) {
       const item = element('div', `toast${error ? ' error' : ''}`, message);
       $('#toasts').append(item);
@@ -403,6 +652,7 @@
       item.addEventListener('click', onClick);
       return item;
     };
+    setupQueueViews();
     function section(parent, title) {
       const box = element('section', 'detail-section');
       box.append(element('h3', '', title));
@@ -599,12 +849,175 @@
       next.disabled = page.offset + page.items.length >= page.total;
       target.replaceChildren(previous, element('span', '', `${from}–${to} of ${page.total}`), next);
     }
+    function closeAlertDetail() {
+      $('#alert-detail-panel').classList.remove('open');
+      $('#alert-detail-shade').classList.remove('open');
+    }
+    function renderSeverityChips(view) {
+      const target = $('#'+view+'-chips');
+      const chosen = $('#'+view+'-severity').value;
+      target.replaceChildren();
+      for (const severity of ['critical','medium','low','high','informational']) {
+        const chip = element('button','alerts-chip');
+        chip.type = 'button';
+        chip.setAttribute('aria-pressed',String(chosen === severity || (chosen === 'priority' && ['critical','high'].includes(severity))));
+        chip.append(element('span','severity-dot ' + severity),element('span','',severity[0].toUpperCase() + severity.slice(1)));
+        if (chosen === severity) chip.append(element('span','chip-check','×'));
+        chip.addEventListener('click',() => {
+          $('#'+view+'-severity').value = chosen === severity ? 'all' : severity;
+          state.offset[view] = 0;
+          refresh();
+        });
+        target.append(chip);
+      }
+    }
+    function renderAlertPage(page) {
+      $('#alerts-count').textContent = page.total + ' alert' + (page.total === 1 ? '' : 's') + ' found';
+      renderSeverityChips('alerts');
+      const target = $('#alerts-list');
+      target.replaceChildren();
+      if (!page.items.length) { target.append(empty('No alerts match these filters.')); pager('alerts',page); return; }
+      const wrap = element('div','alert-table-wrap');
+      const table = element('table','alert-table');
+      const head = element('thead');
+      const header = element('tr');
+      for (const title of ['ID','Alert title','Rule','Severity','Status','Action']) header.append(element('th','',title));
+      head.append(header);
+      const body = element('tbody');
+      for (const alert of page.items) {
+        const tr = element('tr',state.selected.alerts === alert.alert_id ? 'selected' : '');
+        tr.tabIndex = 0;
+        tr.setAttribute('aria-label','Open alert: ' + (alert.title || alert.rule_id || 'Alert'));
+        tr.addEventListener('click',() => selectAlert(alert));
+        tr.addEventListener('keydown',event => { if (event.target === tr && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); selectAlert(alert); } });
+        const idCell = element('td');
+        idCell.append(element('span','alert-id','#' + String(alert.alert_id || '').slice(0,8)));
+        const titleCell = element('td');
+        titleCell.append(element('span','alert-title',alert.title || alert.rule_id || 'Alert'),element('span','alert-subtitle',dateTime(alert.last_seen)));
+        const ruleCell = element('td');
+        ruleCell.append(element('span','alert-rule',alert.rule_id || '—'));
+        const severityCell = element('td');
+        const severityBadge = element('span','alert-badge');
+        severityBadge.append(element('span','severity-dot ' + (alert.severity || 'informational')),element('span','',label(alert.severity)));
+        severityCell.append(severityBadge);
+        const statusCell = element('td');
+        const statusBadge = element('span','alert-badge');
+        statusBadge.append(element('span','alert-status-dot ' + (alert.status || 'new')),element('span','',String(alert.status || 'new').replaceAll('_',' ')));
+        statusCell.append(statusBadge);
+        const actionCell = element('td');
+        const actions = element('details','alert-actions');
+        const summary = element('summary','','⋯');
+        summary.setAttribute('aria-label','Actions for ' + (alert.title || alert.rule_id || 'alert'));
+        const menu = element('div','alert-menu');
+        menu.append(button('View details',() => { actions.open = false; selectAlert(alert); },''));
+        if (alert.incident_id) menu.append(button('Open related incident',() => { actions.open = false; showView('incidents'); selectIncident(alert.incident_id); },''));
+        const action = alert.status === 'false_positive' ? 'undo-false-positive' : 'false-positive';
+        let actionButton;
+        actionButton = button(action === 'false-positive' ? 'Mark false positive' : 'Undo false positive',async () => {
+          actions.open = false;
+          if (action === 'false-positive' && !window.confirm('Mark this alert as a false positive?')) return;
+          if (await performAction(actionButton,'/api/alerts/' + encodeURIComponent(alert.alert_id) + '/' + action,'Alert updated')) {
+            alert.status = action === 'false-positive' ? 'false_positive' : 'new';
+            if ($('#alert-detail-panel').classList.contains('open')) selectAlert(alert);
+          }
+        },'');
+        menu.append(actionButton);
+        actions.append(summary,menu);
+        actions.addEventListener('click',event => event.stopPropagation());
+        actionCell.append(actions);
+        tr.append(idCell,titleCell,ruleCell,severityCell,statusCell,actionCell);
+        body.append(tr);
+      }
+      table.append(head,body);
+      wrap.append(table);
+      target.append(wrap);
+      pager('alerts',page);
+    }
+    function renderQueuePage(view,page) {
+      if (view === 'incidents') renderSeverityChips('incidents');
+      const target = $('#'+view+'-list');
+      target.replaceChildren();
+      const subtitle = $('#view-'+view+' .section-heading p');
+      if (subtitle) {
+        if (!subtitle.dataset.description) subtitle.dataset.description = subtitle.textContent;
+        subtitle.textContent = page.total + ' record' + (page.total === 1 ? '' : 's') + ' found · ' + subtitle.dataset.description;
+      }
+      if (!page.items.length) { target.append(empty('No records match these filters.')); pager(view,page); return; }
+      const headings = view === 'incidents' ? ['ID','Incident','Category','Severity','State','Last seen','Action']
+        : view === 'processes' ? ['ID','Process','PID','Event','User','Observed','Action']
+        : view === 'network' ? ['ID','Remote endpoint','Process','Direction','State','Observed','Action']
+        : view === 'files' ? ['ID','File path','Change','User','Event','Observed','Action']
+        : ['ID','Persistence entry','Change','Kind','User','Observed','Action'];
+      const wrap = element('div','queue-table-wrap');
+      const table = element('table','queue-table');
+      const thead = element('thead');
+      const header = element('tr');
+      for (const name of headings) header.append(element('th','',name));
+      thead.append(header);
+      const tbody = element('tbody');
+      for (const item of page.items) {
+        const id = view === 'incidents' ? item.incident_id : item.event_id;
+        const selected = state.selected[view] === id;
+        const tr = element('tr',selected ? 'selected' : '');
+        tr.tabIndex = 0;
+        const open = () => view === 'incidents' ? selectIncident(id) : selectEvent(view,item);
+        tr.addEventListener('click',open);
+        tr.addEventListener('keydown',event => { if (event.target === tr && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); open(); } });
+        const idCell = element('td');
+        idCell.append(element('span','queue-id','#'+String(id || '').slice(0,8)));
+        const nameCell = element('td');
+        const name = view === 'incidents' ? (item.title || item.category || 'Incident')
+          : view === 'processes' ? (item.process_name || 'Unknown process')
+          : view === 'network' ? (item.action === 'connect' ? (label(item.destination_ip)+':'+label(item.destination_port)) : ('Listener :'+label(item.destination_port)))
+          : (item.file_path || item.evidence?.entry || item.evidence?.task_name || item.evidence?.service_name || 'Unknown path');
+        const title = element('span','queue-title',name);
+        title.title = name;
+        nameCell.append(title,element('span','queue-subtitle',view === 'incidents' ? label(item.subject) : dateTime(item.timestamp)));
+        const values = view === 'incidents' ? [item.category || item.rule_id,item.severity,item.state,dateTime(item.last_seen)]
+          : view === 'processes' ? [item.process_id,item.action,item.username,dateTime(item.timestamp)]
+          : view === 'network' ? [item.process_name || 'Owner unavailable',item.metadata?.direction || 'Listener',item.metadata?.connection_state || item.action,dateTime(item.timestamp)]
+          : view === 'files' ? [item.action,item.username,item.event_type,dateTime(item.timestamp)]
+          : [item.action,item.evidence?.kind || item.metadata?.kind,item.username,dateTime(item.timestamp)];
+        const cells = values.map((value,index) => {
+          const cell = element('td');
+          const isPill = (view === 'incidents' && (index === 1 || index === 2)) || (view === 'processes' && index === 1) || ((view === 'files' || view === 'persistence') && index === 0);
+          const inner = element('span',isPill ? 'queue-pill '+String(value || '').toLowerCase() : 'queue-value',label(value));
+          inner.title = label(value);
+          cell.append(inner);
+          return cell;
+        });
+        const actionCell = element('td');
+        const actions = element('details','queue-actions');
+        const summary = element('summary','','⋯');
+        summary.setAttribute('aria-label','Actions for '+name);
+        const menu = element('div','queue-actions-menu');
+        menu.append(button('View details',() => { actions.open = false; open(); },''));
+        if (view === 'incidents' && item.state !== 'resolved') {
+          let resolveButton;
+          resolveButton = button('Resolve incident',async () => {
+            actions.open = false;
+            if (await performAction(resolveButton,'/api/incidents/'+encodeURIComponent(id)+'/resolve','Incident resolved',null,'Resolve this incident?')) selectIncident(id);
+          },'');
+          menu.append(resolveButton);
+        }
+        actions.append(summary,menu);
+        actions.addEventListener('click',event => event.stopPropagation());
+        actionCell.append(actions);
+        tr.append(idCell,nameCell,...cells,actionCell);
+        tbody.append(tr);
+      }
+      table.append(thead,tbody);
+      wrap.append(table);
+      target.append(wrap);
+      pager(view,page);
+    }
     function renderPage(view, page) {
+      if (view === 'alerts') { renderAlertPage(page); return; }
+      if (['incidents','processes','network','files','persistence'].includes(view)) { renderQueuePage(view,page); return; }
       const target = $(`#${view}-list`);
       target.replaceChildren();
       for (const item of page.items) {
         if (view === 'incidents') target.append(row(item.title || item.category || 'Incident', [item.subject, dateTime(item.last_seen), item.severity], item.state, () => selectIncident(item.incident_id), state.selected.incidents === item.incident_id));
-        else if (view === 'alerts') target.append(row(item.title || item.rule_id || 'Alert', [item.rule_id, dateTime(item.last_seen), item.status], item.severity, () => selectAlert(item), state.selected.alerts === item.alert_id));
         else target.append(eventRow(view, item));
       }
       if (!page.items.length) target.append(empty('No records match these filters.'));
@@ -665,6 +1078,10 @@
     function showView(view) {
       if (!titles[view]) return;
       state.view = view;
+      document.body.classList.toggle('alerts-active',view === 'alerts');
+      document.body.classList.toggle('incidents-active',view === 'incidents');
+      if (view !== 'alerts') closeAlertDetail();
+      for (const name of ['incidents','processes','network','files','persistence']) if (name !== view) closeQueueDetail(name);
       $('#view-title').textContent = titles[view];
       for (const name of Object.keys(titles)) $(`#view-${name}`).hidden = name !== view;
       for (const item of document.querySelectorAll('#navigation button')) {
@@ -679,6 +1096,14 @@
     function jumpTo(view, filters = {}) {
       for (const input of document.querySelectorAll(`#view-${view} .filters input, #view-${view} .filters select`)) {
         input.value = input.tagName === 'SELECT' ? input.options[0].value : '';
+      }
+      if (view === 'alerts') {
+        $('#alerts-search').value = '';
+        $('#alerts-since').value = filters.search ? 'all' : '7d';
+      }
+      if (view === 'incidents') {
+        $('#incidents-search').value = '';
+        $('#incidents-since').value = filters.search ? 'all' : '7d';
       }
       for (const [name, value] of Object.entries(filters)) {
         const input = $(`#${view}-${name}`);
@@ -696,6 +1121,7 @@
     }
     async function selectIncident(id) {
       state.selected.incidents = id;
+      openQueueDetail('incidents');
       const requestId = ++state.detailRequest;
       const target = $('#incidents-detail');
       target.replaceChildren(empty('Loading incident…'));
@@ -783,6 +1209,8 @@
     }
     function selectAlert(alert) {
       state.selected.alerts = alert.alert_id;
+      $('#alert-detail-panel').classList.add('open');
+      $('#alert-detail-shade').classList.add('open');
       const target = $('#alerts-detail');
       target.replaceChildren(element('h2','',alert.title || alert.rule_id || 'Alert'), element('p','detail-intro',alert.description || 'Detection recorded on this host.'));
       facts(target, [['Severity',alert.severity],['Status',alert.status],['Rule',alert.rule_id],['Category',alert.category],['Host',alert.host_id],['First seen',dateTime(alert.first_seen)],['Last seen',dateTime(alert.last_seen)],['MITRE tactic',alert.tactic],['Technique',alert.technique_id]]);
@@ -791,8 +1219,79 @@
       target.append(alertRecord(alert));
       if (alert.incident_id) target.append(button('Open related incident',() => { showView('incidents'); selectIncident(alert.incident_id); }));
     }
+    function processGraphNode(node,kind) {
+      const card = element('div','graph-node '+kind);
+      const event = node.event || {};
+      card.append(element('span','graph-icon','▣'),element('strong','',event.process_name || 'Unknown process'));
+      card.append(element('small','','PID '+label(node.pid ?? event.process_id)));
+      card.append(element('small','',node.stopped_at ? 'Stop observed' : 'No stop observed'));
+      card.title = (event.process_name || 'Unknown process')+' · '+label(event.executable_path);
+      return card;
+    }
+    function renderProcessGraph(item,data) {
+      const canvas = $('#process-graph');
+      const meta = $('#process-graph-meta');
+      $('#process-graph-panel .panel-head h2').textContent = 'Process relationship · '+(item.process_name || 'Unknown process');
+      $('#process-graph-panel .panel-head p').textContent = 'PID '+label(item.process_id)+' · '+dateTime(item.timestamp)+' · verified ancestry and recorded children';
+      canvas.replaceChildren();
+      meta.replaceChildren();
+      const nodes = [...(data.nodes || [])].reverse();
+      if (!nodes.length) {
+        canvas.append(element('div','graph-empty',data.reason || 'Verified process identity is unavailable for this event.'));
+      } else {
+        const lineage = element('div','graph-lineage');
+        nodes.forEach((node,index) => {
+          if (index) lineage.append(element('span','graph-link'));
+          lineage.append(processGraphNode(node,index === nodes.length - 1 ? 'selected' : ''));
+        });
+        canvas.append(lineage);
+        if (data.children?.length) {
+          const children = element('div','graph-children');
+          for (const child of data.children.slice(0,6)) children.append(processGraphNode(child,'child'));
+          if (data.children.length > 6) children.append(element('div','graph-note','+'+(data.children.length-6)+' more recorded children'));
+          const branchOffset = ((nodes.length - 1) * 204 + 80) + 'px';
+          const drop = element('div','graph-drop');
+          drop.style.marginLeft = branchOffset;
+          const childrenLabel = element('div','graph-children-label',data.children.length+' recorded child'+(data.children.length === 1 ? '' : 'ren'));
+          childrenLabel.style.marginLeft = branchOffset;
+          children.style.marginLeft = branchOffset;
+          canvas.append(drop,childrenLabel,children);
+        }
+        const explanation = data.complete ? 'Recorded ancestry reaches a known root.' : data.missing_parent_pid != null
+          ? 'Parent PID '+data.missing_parent_pid+' has no verified process record; no connection is inferred.'
+          : 'Ancestry is incomplete; missing parents are not inferred from PID.';
+        canvas.append(element('p','graph-note',explanation));
+      }
+      const entries = [
+        ['Executable path',item.executable_path],
+        ['User',item.username],
+        ['SHA-256',item.metadata?.executable_sha256],
+        ['Redacted command line',item.metadata?.command_line?.join(' ')],
+      ];
+      for (const [name,value] of entries) {
+        const box = element('div');
+        const detail = element('strong','',label(value));
+        detail.title = label(value);
+        box.append(element('span','',name),detail);
+        meta.append(box);
+      }
+    }
+    async function loadProcessGraph(item) {
+      const requestId = (state.graphRequest || 0) + 1;
+      state.graphRequest = requestId;
+      $('#process-graph').replaceChildren(element('div','graph-empty','Loading verified process relationships…'));
+      $('#process-graph-meta').replaceChildren();
+      try {
+        const data = await getJSON('/api/processes/'+encodeURIComponent(item.event_id)+'/relationships');
+        if (state.graphRequest === requestId && state.selected.processes === item.event_id && state.view === 'processes') renderProcessGraph(item,data);
+      } catch (error) {
+        if (state.graphRequest === requestId) $('#process-graph').replaceChildren(element('div','graph-empty','Could not load process relationships: '+error.message));
+      }
+    }
     function selectEvent(view, item) {
       state.selected[view] = item.event_id;
+      openQueueDetail(view);
+      if (view === 'processes') loadProcessGraph(item);
       const target = $(`#${view}-detail`);
       target.replaceChildren(element('h2','',view === 'processes' ? item.process_name || item.event_type : view === 'network' ? `${label(item.destination_ip)}:${label(item.destination_port)}` : label(item.file_path || item.evidence?.entry || item.evidence?.task_name || item.evidence?.service_name)), element('p','detail-intro',`${item.event_type} · observed ${dateTime(item.timestamp)}`));
       if (view === 'processes') {
@@ -945,9 +1444,8 @@
       const about = section(target,'Scope and limits');
       about.append(element('p','detail-intro','RT-HID stores evidence locally and serves this dashboard on loopback. Collection is polling based and may miss short-lived processes or listeners. Alerts are indicators for investigation; the agent does not block or quarantine threats.'));
     }
-    for (const select of [$('#alerts-severity'), $('#incidents-severity')]) select.add(new Option('High + critical', 'priority'), 1);
-    $('#alerts-status').add(new Option('Not false positive', 'active'), 1);
-    for (const view of ['alerts','incidents','processes','network','files','persistence']) {
+    $('#incidents-severity').add(new Option('High + critical', 'priority'), 1);
+    for (const view of ['processes','network','files','persistence']) {
       const windowSelect = element('select');
       windowSelect.id = `${view}-since`;
       windowSelect.setAttribute('aria-label', 'Time window');
@@ -955,6 +1453,30 @@
       const order = $(`#${view}-order`);
       order.parentNode.insertBefore(windowSelect, order);
     }
+    for (const input of document.querySelectorAll('#view-alerts input, #view-alerts select')) {
+      let timer;
+      input.addEventListener(input.tagName === 'INPUT' ? 'input' : 'change',() => {
+        clearTimeout(timer);
+        timer = setTimeout(() => { state.offset.alerts = 0; refresh(); },input.tagName === 'INPUT' ? 260 : 0);
+      });
+    }
+    $('#alerts-clear').addEventListener('click',() => {
+      for (const input of document.querySelectorAll('#view-alerts input')) input.value = '';
+      $('#alerts-severity').value = 'all';
+      $('#alerts-status').value = 'all';
+      $('#alerts-order').value = 'newest';
+      $('#alerts-since').value = '7d';
+      state.offset.alerts = 0;
+      refresh();
+    });
+    $('#alert-detail-close').addEventListener('click',closeAlertDetail);
+    $('#alert-detail-shade').addEventListener('click',closeAlertDetail);
+    document.addEventListener('keydown',event => {
+      if (event.key === 'Escape') {
+        closeAlertDetail();
+        for (const view of ['incidents','processes','network','files','persistence']) closeQueueDetail(view);
+      }
+    });
     for (const item of document.querySelectorAll('#navigation button')) item.addEventListener('click',() => showView(item.dataset.view));
     $('#global-search').addEventListener('submit', event => {
       event.preventDefault();
@@ -965,7 +1487,7 @@
     });
     document.addEventListener('keydown', event => {
       if (event.key === '/' && !event.altKey && !event.ctrlKey && !event.metaKey && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) {
-        event.preventDefault(); $('#global-query').focus();
+        event.preventDefault(); (state.view === 'alerts' ? $('#alerts-search') : state.view === 'incidents' ? $('#incidents-search') : $('#global-query')).focus();
       }
     });
     $('#open-incidents').addEventListener('click', () => jumpTo('incidents', { state:'open' }));
@@ -973,8 +1495,9 @@
     $('#all-incidents').addEventListener('click', () => jumpTo('incidents'));
     $('#all-alerts').addEventListener('click', () => jumpTo('alerts'));
     $('#all-collectors').addEventListener('click', () => showView('collectors'));
-    for (const view of ['alerts','incidents','processes','network','files','persistence']) {
-      for (const input of document.querySelectorAll(`#view-${view} .filters input, #view-${view} .filters select`)) {
+    for (const view of ['incidents','processes','network','files','persistence']) {
+      const controls = view === 'incidents' ? '#view-incidents input, #view-incidents select' : `#view-${view} .filters input, #view-${view} .filters select`;
+      for (const input of document.querySelectorAll(controls)) {
         let timer;
         input.addEventListener(input.tagName === 'INPUT' ? 'input' : 'change',() => { clearTimeout(timer); timer = setTimeout(() => { state.offset[view] = 0; refresh(); },input.tagName === 'INPUT' ? 260 : 0); });
       }
